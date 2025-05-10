@@ -5,7 +5,6 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/database"
 	"github.com/wso2/identity-customer-data-service/internal/models"
 	repositories "github.com/wso2/identity-customer-data-service/internal/repository"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -70,9 +69,7 @@ func CountEventsMatchingRule(profileId string, trigger models.RuleTrigger, timeR
 	}
 	count := 0
 	for _, event := range events {
-		log.Printf("Evaluating event: %v", event)
 		if EvaluateConditions(event, trigger.Conditions) {
-			log.Printf("incrementing")
 			count++
 		}
 	}

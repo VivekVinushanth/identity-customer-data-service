@@ -21,7 +21,7 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 )
 
-func initPostgresDatabaseFromConfig(config *config.Config) {
+func initDatabaseFromConfig(config *config.Config) {
 	host := config.DatabaseConfig.Host
 	port := config.DatabaseConfig.Port
 	user := config.DatabaseConfig.User
@@ -67,16 +67,11 @@ func main() {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Initialize MongoDB
-	mongoDB := database.ConnectMongoDB(cdsConfig.MongoDB.URI, cdsConfig.MongoDB.Database)
-
-	database.InitLocks(mongoDB.Database)
+	// Initialize database
+	initDatabaseFromConfig(cdsConfig)
 
 	// Initialize Event queue
 	service.StartProfileWorker()
-
-	// Initialize PostgreSQL database
-	initPostgresDatabaseFromConfig(cdsConfig)
 
 	api := router.Group(constants.ApiBasePath)
 	handlers.RegisterHandlers(api, server)
@@ -88,9 +83,6 @@ func main() {
 	router.OPTIONS("/*path", func(c *gin.Context) {
 		c.Status(200)
 	})
-
-	// Close MongoDB connection on exit
-	defer mongoDB.Client.Disconnect(nil)
 
 	logger.Info("identity-customer-data-service component has started.")
 

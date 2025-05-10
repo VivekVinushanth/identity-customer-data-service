@@ -29,6 +29,10 @@ func Info(msg string, keysAndValues ...interface{}) {
 	Log.Info(msg, keysAndValues...)
 }
 
+func WARN(msg string, keysAndValues ...interface{}) {
+	Log.Info(msg, keysAndValues...)
+}
+
 func Error(err error, msg string, keysAndValues ...interface{}) {
 	Log.Error(err, msg, keysAndValues...)
 }
