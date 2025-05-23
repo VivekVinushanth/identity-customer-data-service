@@ -3,13 +3,13 @@ name: PR Builder
 on:
   pull_request:
     branches:
-      - poc-cds
+      - main
 
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Optional PR number (for manual visibility/logging)"
-        required: false
+        description: "Pull request"
+        required: true
       branch:
         description: "Branch to check out"
         required: true
