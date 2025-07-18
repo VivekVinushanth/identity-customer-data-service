@@ -39,7 +39,6 @@ import (
 type IdentityClient struct {
 	BaseURL    string
 	HTTPClient *http.Client
-	Token      string
 }
 
 // Create new client and fetch token
@@ -55,35 +54,23 @@ func NewIdentityClient(cfg config.Config) *IdentityClient {
 		},
 	}
 
-	// Fetch token at startup
-	tokenResp, err := client.fetchClientCredentialsToken()
-	if err != nil {
-		log.GetLogger().Error("Failed to fetch access token", log.Error(err))
-		return client // Token will be empty
-	}
-
-	if accessToken, ok := tokenResp["access_token"].(string); ok {
-		client.Token = accessToken
-	} else {
-		log.GetLogger().Error("Access token not found in token response")
-	}
-
 	return client
 }
 
 // Fetch token using client_credentials grant
-func (c *IdentityClient) fetchClientCredentialsToken() (map[string]interface{}, error) {
+func (c *IdentityClient) fetchClientCredentialsToken(orgId string) (string, error) {
 
 	form := url.Values{}
 	form.Set("grant_type", "client_credentials")
 	form.Set("scope", "internal_application_mgt_view internal_claim_meta_view internal_user_mgt_list internal_user_mgt_view internal_claim_meta_view") // Optional: set required scopes
 
 	authConfig := config.GetCDSRuntime().Config.AuthServer
-	tokenEndpoint := "https://" + authConfig.Host + ":" + authConfig.Port + "/" + authConfig.TokenEndpoint
+	tokenEndpoint := "https://" + c.BaseURL + "/t/" + orgId + authConfig.TokenEndpoint
+	log.GetLogger().Info("Fetching token from endpoint: " + tokenEndpoint)
 
 	req, err := http.NewRequest("POST", tokenEndpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	req.SetBasicAuth(authConfig.ClientID, authConfig.ClientSecret)
@@ -94,7 +81,7 @@ func (c *IdentityClient) fetchClientCredentialsToken() (map[string]interface{}, 
 	if err != nil {
 		errorMsg := "Failed to fetch token from identity server"
 		logger.Debug(errorMsg, log.Error(err))
-		return nil, errors2.NewClientError(errors2.ErrorMessage{
+		return "", errors2.NewClientError(errors2.ErrorMessage{
 			Code:        "TOKEN_FETCH_FAILED",
 			Message:     "Unable to get access token",
 			Description: errorMsg,
@@ -105,7 +92,7 @@ func (c *IdentityClient) fetchClientCredentialsToken() (map[string]interface{}, 
 	if resp.StatusCode != http.StatusOK {
 		bodyBytes, _ := io.ReadAll(resp.Body)
 		errorMsg := fmt.Sprintf("Token endpoint returned status %d: %s", resp.StatusCode, string(bodyBytes))
-		return nil, errors2.NewClientError(errors2.ErrorMessage{
+		return "", errors2.NewClientError(errors2.ErrorMessage{
 			Code:        "TOKEN_INVALID_RESPONSE",
 			Message:     "Token fetch failed",
 			Description: errorMsg,
@@ -114,27 +101,30 @@ func (c *IdentityClient) fetchClientCredentialsToken() (map[string]interface{}, 
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
 	var result map[string]interface{}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
+		return "", err
 	}
-
-	return result, nil
+	token, ok := result["access_token"].(string)
+	if !ok {
+		return "", fmt.Errorf("access_token not found in response: %s", string(body))
+	}
+	return token, nil
 }
 
 func (c *IdentityClient) GetProfileSchema(orgId string) ([]model.ProfileSchemaAttribute, error) {
 
 	logger := log.GetLogger()
 
-	localClaimsMap, err := c.GetLocalClaimsMap()
+	localClaimsMap, err := c.GetLocalClaimsMap(orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch local claims: %w", err)
 	}
 
-	dialects, err := c.GetAllDialects()
+	dialects, err := c.GetAllDialects(orgId)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch dialects: %w", err)
 	}
@@ -154,7 +144,7 @@ func (c *IdentityClient) GetProfileSchema(orgId string) ([]model.ProfileSchemaAt
 			continue
 		}
 
-		claims, err := c.GetClaimsByDialect(dialectID)
+		claims, err := c.GetClaimsByDialect(dialectID, orgId)
 		if err != nil {
 			logger.Warn(fmt.Sprintf("Failed to fetch claims for dialect %s", dialectURI))
 			continue
@@ -211,10 +201,14 @@ func (c *IdentityClient) GetProfileSchema(orgId string) ([]model.ProfileSchemaAt
 	return result, nil
 }
 
-func (c *IdentityClient) GetAllDialects() ([]map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("https://%s/api/server/v1/claim-dialects", c.BaseURL)
+func (c *IdentityClient) GetAllDialects(orgId string) ([]map[string]interface{}, error) {
+	endpoint := fmt.Sprintf("https://%s/t/%s/api/server/v1/claim-dialects", c.BaseURL, orgId)
+	token, err := c.fetchClientCredentialsToken(orgId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch token: %w", err)
+	}
 	req, _ := http.NewRequest("GET", endpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -228,10 +222,14 @@ func (c *IdentityClient) GetAllDialects() ([]map[string]interface{}, error) {
 	return dialects, err
 }
 
-func (c *IdentityClient) GetClaimsByDialect(dialectID string) ([]map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("https://%s/api/server/v1/claim-dialects/%s/claims", c.BaseURL, dialectID)
+func (c *IdentityClient) GetClaimsByDialect(dialectID, orgId string) ([]map[string]interface{}, error) {
+	endpoint := fmt.Sprintf("https://%s/t/%s/api/server/v1/claim-dialects/%s/claims", c.BaseURL, orgId, dialectID)
 	req, _ := http.NewRequest("GET", endpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	token, err := c.fetchClientCredentialsToken(orgId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -245,10 +243,14 @@ func (c *IdentityClient) GetClaimsByDialect(dialectID string) ([]map[string]inte
 	return claims, err
 }
 
-func (c *IdentityClient) GetLocalClaimsMap() (map[string]map[string]interface{}, error) {
-	endpoint := fmt.Sprintf("https://%s/api/server/v1/claim-dialects/local/claims", c.BaseURL)
+func (c *IdentityClient) GetLocalClaimsMap(orgId string) (map[string]map[string]interface{}, error) {
+	endpoint := fmt.Sprintf("https://%s/t/%s/api/server/v1/claim-dialects/local/claims", c.BaseURL, orgId)
 	req, _ := http.NewRequest("GET", endpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	token, err := c.fetchClientCredentialsToken(orgId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -395,11 +397,15 @@ func ifThenElse(cond bool, a, b string) string {
 }
 
 // GetSCIMUser fetches a SCIM user by ID
-func (c *IdentityClient) GetSCIMUser(userId string) (map[string]interface{}, error) {
+func (c *IdentityClient) GetSCIMUser(userId, orgId string) (map[string]interface{}, error) {
 
-	endpoint := fmt.Sprintf("https://%s/scim2/Users/%s", c.BaseURL, userId)
+	endpoint := fmt.Sprintf("https://%s/t/%s/scim2/Users/%s", c.BaseURL, orgId, userId)
 	req, _ := http.NewRequest("GET", endpoint, nil)
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	token, err := c.fetchClientCredentialsToken(orgId)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch token: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
