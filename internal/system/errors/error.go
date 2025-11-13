@@ -64,3 +64,24 @@ func NewClientErrorWithoutCode(msg ErrorMessage) *ClientError {
 		ErrorMessage: msg,
 	}
 }
+
+func IsClientError(err error) bool {
+	_, ok := err.(*ClientError)
+	return ok
+}
+
+func IsServerError(err error) bool {
+	_, ok := err.(*ServerError)
+	return ok
+}
+
+func GetErrorCode(err error) string {
+	switch e := err.(type) {
+	case *ClientError:
+		return e.Code
+	case *ServerError:
+		return e.Code
+	default:
+		return "UNKNOWN_ERROR"
+	}
+}

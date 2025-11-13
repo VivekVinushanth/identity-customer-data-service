@@ -32,7 +32,7 @@ func Test_UnificationRule(t *testing.T) {
 				Mutability:    constants.MutabilityReadWrite,
 			},
 		}
-		err := profileSchemaService.AddProfileSchemaAttributesForScope(schemaAttributes, constants.IdentityAttributes)
+		err := profileSchemaService.AddProfileSchemaAttributesForScope(schemaAttributes, SuperTenantOrg, constants.IdentityAttributes)
 		require.NoError(t, err, "Failed to add enrichment rule dependency")
 	})
 
@@ -70,7 +70,7 @@ func Test_UnificationRule(t *testing.T) {
 			MergeStrategy: "combine",
 			Mutability:    constants.MutabilityReadWrite,
 		}
-		err := profileSchemaService.AddProfileSchemaAttributesForScope([]profileSchema.ProfileSchemaAttribute{subAttr}, constants.Traits)
+		err := profileSchemaService.AddProfileSchemaAttributesForScope([]profileSchema.ProfileSchemaAttribute{subAttr}, SuperTenantOrg, constants.Traits)
 		require.NoError(t, err, "Failed to add sub-attribute to schema")
 
 		//  Add parent complex attribute referencing sub-attribute
@@ -88,7 +88,7 @@ func Test_UnificationRule(t *testing.T) {
 				},
 			},
 		}
-		err = profileSchemaService.AddProfileSchemaAttributesForScope([]profileSchema.ProfileSchemaAttribute{parentAttr}, constants.Traits)
+		err = profileSchemaService.AddProfileSchemaAttributesForScope([]profileSchema.ProfileSchemaAttribute{parentAttr}, SuperTenantOrg, constants.Traits)
 		require.NoError(t, err, "Failed to add complex attribute to schema")
 
 		// Try creating a unification rule with that complex attribute

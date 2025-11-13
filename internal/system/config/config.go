@@ -42,6 +42,8 @@ type AuthServerConfig struct {
 	ClientSecret          string              `yaml:"client_secret"`
 	AdminUsername         string              `yaml:"admin_username"`
 	AdminPassword         string              `yaml:"admin_password"`
+	ISCDSUserUsername     string              `yaml:"is_cds_user_username"`
+	ISCDSUserPassword     string              `yaml:"is_cds_user_password"`
 	RequiredScopes        map[string][]string `yaml:"required_scopes"`
 }
 

@@ -25,6 +25,7 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
+	"github.com/wso2/identity-customer-data-service/internal/system/utils"
 	"net/http"
 	"strings"
 	"time"
@@ -155,4 +156,23 @@ func unauthorizedError() error {
 		Message:     errors2.UN_AUTHORIZED.Message,
 		Description: errors2.UN_AUTHORIZED.Description,
 	}, http.StatusUnauthorized)
+}
+
+func AuthenticateRequestFromIS(r *http.Request, orgId string) error {
+
+	authHeader := r.Header.Get("Authorization")
+	if !strings.HasPrefix(authHeader, "Basic ") || authHeader == "" {
+		return unauthorizedError()
+	}
+
+	basicAuthBase64EncodedCredentials := strings.TrimPrefix(authHeader, "Basic ")
+	cfg := config.GetCDSRuntime().Config
+	base64Encoded := utils.Base64Encode(cfg.AuthServer.ISCDSUserUsername, cfg.AuthServer.ISCDSUserPassword)
+
+	if basicAuthBase64EncodedCredentials != base64Encoded {
+		return unauthorizedError()
+	}
+
+	// todo: can involve mtls thumprint check as well.
+	return nil
 }

@@ -72,9 +72,9 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 			Mutability: constants.MutabilityReadWrite, MultiValued: true, ApplicationIdentifier: AppId},
 	}
 
-	err := profileSchemaSvc.AddProfileSchemaAttributesForScope(identityAttr, constants.IdentityAttributes)
-	err1 := profileSchemaSvc.AddProfileSchemaAttributesForScope(traits, constants.Traits)
-	err2 := profileSchemaSvc.AddProfileSchemaAttributesForScope(appData, constants.ApplicationData)
+	err := profileSchemaSvc.AddProfileSchemaAttributesForScope(identityAttr, SuperTenantOrg, constants.IdentityAttributes)
+	err1 := profileSchemaSvc.AddProfileSchemaAttributesForScope(traits, SuperTenantOrg, constants.Traits)
+	err2 := profileSchemaSvc.AddProfileSchemaAttributesForScope(appData, SuperTenantOrg, constants.ApplicationData)
 	require.NoError(t, err)
 	require.NoError(t, err1)
 	require.NoError(t, err2)
@@ -318,7 +318,7 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 			{OrgId: OtherTenant, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email", ValueType: constants.StringDataType, MergeStrategy: "combine",
 				Mutability: constants.MutabilityReadWrite, MultiValued: true},
 		}
-		err = profileSchemaSvc.AddProfileSchemaAttributesForScope(identityAttr, constants.IdentityAttributes)
+		err = profileSchemaSvc.AddProfileSchemaAttributesForScope(identityAttr, SuperTenantOrg, constants.IdentityAttributes)
 
 		emailRuleId := uuid.New().String()
 		jsonData := []byte(`{

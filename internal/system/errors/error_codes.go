@@ -185,6 +185,12 @@ var (
 		Description: "No user profile record found for the given profile_id",
 	}
 
+	PROFILE_NOT_FOUND_FOR_USER_ID = ErrorMessage{
+		Code:        errorPrefix + "11005",
+		Message:     "Profile not found.",
+		Description: "No user profile record found for the given user_id",
+	}
+
 	MULTIPLE_PROFILES_FOUND = ErrorMessage{
 		Code:    errorPrefix + "11005",
 		Message: "Multiple profiles found.",

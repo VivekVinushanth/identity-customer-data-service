@@ -1249,9 +1249,9 @@ func (ps *ProfilesService) FindProfileByUserId(userId string) (*profileModel.Pro
 	}
 	if profile == nil {
 		clientError := errors2.NewClientError(errors2.ErrorMessage{
-			Code:        errors2.PROFILE_NOT_FOUND.Code,
-			Message:     errors2.PROFILE_NOT_FOUND.Message,
-			Description: errors2.PROFILE_NOT_FOUND.Description,
+			Code:        errors2.PROFILE_NOT_FOUND_FOR_USER_ID.Code,
+			Message:     errors2.PROFILE_NOT_FOUND_FOR_USER_ID.Message,
+			Description: errors2.PROFILE_NOT_FOUND_FOR_USER_ID.Description,
 		}, http.StatusNotFound)
 		return nil, clientError
 	}

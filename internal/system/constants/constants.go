@@ -8,7 +8,7 @@ const ProfileSchemaApiPath = "profile-schema"
 const IdentityServerDialectsPath = "/api/server/v1/claim-dialects"
 const Filter = "filter"
 const Attributes = "attributes"        // Query parameter to filter attributes in the request.
-const ProfileCookie = "cdm_profile_id" // Cookie name to store the profile ID in the browser.
+const ProfileCookie = "cds_profile_id" // Cookie name to store the profile ID in the browser.
 const DefaultTenant = "carbon.super"
 
 type contextKey string
@@ -86,10 +86,10 @@ const (
 )
 
 var AllowedMergeStrategies = map[string]bool{
-	"latest":    true, // Use the latest value from the profiles being merged - rely on the updated_at field
-	"combine":   true, // Combine values from both profiles (the value type has to be arrayOfString or arrayOfInt)
-	"oldest":    true, // Use the oldest value from the profiles being merged - rely on the updated_at field
-	"overwrite": true, // todo: Remove later.
+	MergeStrategyLatest:    true, // Use the latest value from the profiles being merged - rely on the updated_at field
+	MergeStrategyCombine:   true, // Combine values from both profiles (the value type has to be arrayOfString or arrayOfInt)
+	MergeStrategyOldest:    true, // Use the oldest value from the profiles being merged - rely on the updated_at field
+	MergeStrategyOverwrite: true, // todo: Remove later.
 }
 
 var AllowedConditionOperators = map[string]bool{
@@ -105,26 +105,20 @@ var AllowedConditionOperators = map[string]bool{
 	"less_than_equals":    true,
 }
 
-var AllowedEventTypes = map[string]bool{
-	"page":     true,
-	"track":    true,
-	"identify": true,
-}
-
 var AllowedConsentPurposes = map[string]bool{
 	"profiling":       true,
 	"personalization": true,
 	"destination":     true,
 }
 
-// Merge usecases
+// Merge use cases
 const (
 	TempProfile_TempProfile_Merge = "TEMP_TEMP"
 	TempProfile_PermProfile_Merge = "TEMP_PERM"
 	PermProfile_PermProfile_Merge = "PERM_PERM"
 )
 
-// Sync Profile usecases
+// Sync Profile use cases
 const (
 	SyncProfileOnSchedule = "SYNC_ON_SCHEDULE"
 	SyncProfileOnUpdate   = "SYNC_ON_UPDATE"

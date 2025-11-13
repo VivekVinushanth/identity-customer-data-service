@@ -664,6 +664,7 @@ func (ph *ProfileHandler) PatchCurrentUserProfile(w http.ResponseWriter, r *http
 func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.Request) {
 
 	err := utils.AuthnAndAuthz(request, "profile:update")
+	// todo: ensure the authorization.
 	if err != nil {
 		utils.HandleError(writer, err)
 		return
@@ -706,7 +707,8 @@ func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.
 	if profileSync.Event == "POST_ADD_USER" {
 		if profileSync.ProfileId != "" && profileSync.UserId != "" {
 
-			// This scenario is when the user anonymously tried and then trying to signup or login. So profile with profile id exists
+			// This scenario is when the user anonymously tried(cookie has profileId) and then trying to signup or login.
+			// So profile with profile id exists
 			existingProfile, err = profilesService.GetProfile(profileSync.ProfileId)
 			if err != nil {
 				//todo: decide if we need to write the response back even for fire and forget
@@ -741,11 +743,16 @@ func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.
 			}
 			return
 		} else if profileSync.ProfileId == "" {
-			// this is when we create a profile for a new user created in IS
+			// this is when we create a profile for a new user created in IS, either by admin or self signup
 			existingProfile, err = profilesService.FindProfileByUserId(profileSync.UserId)
 			if err != nil {
-				utils.HandleError(writer, err)
-				return
+				if errors2.IsClientError(err) && errors2.GetErrorCode(err) == errors2.PROFILE_NOT_FOUND_FOR_USER_ID.Code {
+					existingProfile = nil
+				} else {
+					logger.Error(err.Error())
+					return
+
+				}
 			}
 			if existingProfile == nil {
 				identityAttributes := make(map[string]interface{})

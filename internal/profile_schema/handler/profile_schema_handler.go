@@ -108,7 +108,8 @@ func (psh *ProfileSchemaHandler) AddProfileSchemaAttributesForScope(w http.Respo
 	}
 	schemaProvider := provider.NewProfileSchemaProvider()
 	schemaService := schemaProvider.GetProfileSchemaService()
-	err = schemaService.AddProfileSchemaAttributesForScope(schemaAttributes, scope)
+	orgId = utils.ExtractTenantIdFromPath(r)
+	err = schemaService.AddProfileSchemaAttributesForScope(schemaAttributes, orgId, scope)
 	if err != nil {
 		utils.HandleError(w, err)
 		return
@@ -356,6 +357,31 @@ func (psh *ProfileSchemaHandler) SyncProfileSchema(w http.ResponseWriter, r *htt
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Profile schema synced successfully"})
+		return
+	}
+
+	if schemaAtt.Event == "POST_LOCAL_CLAIM_ADD" {
+		err := schemaService.AddProfileSchemaAttributesForScope(schemaAtt.Attributes, schemaAtt.OrgId, constants.IdentityAttributes)
+		if err != nil {
+			utils.HandleError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Profile schema updated successfully"})
+		return
+	}
+
+	if schemaAtt.Event == "POST_LOCAL_CLAIM_DELETE" {
+		orgId := schemaAtt.OrgId
+		err := schemaService.UpdateProfileSchema(orgId)
+		if err != nil {
+			utils.HandleError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Profile schema updated successfully"})
 		return
 	}
 

@@ -38,7 +38,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 				createAttr(SuperTenantOrg, "identity_attributes.email", constants.StringDataType, "combine", constants.MutabilityReadWrite),
 				createAttr(SuperTenantOrg, "identity_attributes.phone", constants.StringDataType, "combine", constants.MutabilityReadWrite),
 			}
-			err := svc.AddProfileSchemaAttributesForScope(identityAttrs, constants.IdentityAttributes)
+			err := svc.AddProfileSchemaAttributesForScope(identityAttrs, SuperTenantOrg, constants.IdentityAttributes)
 			require.NoError(t, err, "Failed to add identity attributes")
 
 			// 2. Traits
@@ -53,7 +53,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 					MultiValued:   true,
 				},
 			}
-			err = svc.AddProfileSchemaAttributesForScope(traits, constants.Traits)
+			err = svc.AddProfileSchemaAttributesForScope(traits, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Failed to add traits attributes")
 
 			// 3. Application Data
@@ -69,7 +69,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 					ApplicationIdentifier: "app_1",
 				},
 			}
-			err = svc.AddProfileSchemaAttributesForScope(appData, constants.ApplicationData)
+			err = svc.AddProfileSchemaAttributesForScope(appData, SuperTenantOrg, constants.ApplicationData)
 			require.NoError(t, err, "Failed to add application_data attributes")
 
 			_ = svc.DeleteProfileSchema(SuperTenantOrg)
@@ -78,35 +78,35 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 		t.Run("Add_InvalidScope_ShouldFail", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "invalidscope.email", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, "invalidscope")
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, "invalidscope")
 			errDesc := utils.ExtractErrorDescription(err)
 			require.Contains(t, errDesc, "Invalid scope", "Expected validation failure for invalid scope")
 		})
 
 		t.Run("Add_ConflictingScope_ShouldFail", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "identity_attributes.email", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, "invalidscope")
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, "invalidscope")
 			errDesc := utils.ExtractErrorDescription(err)
 			require.Contains(t, errDesc, "does not match the scope", "Expected validation failure for invalid scope")
 		})
 
 		t.Run("Add_MissingAppIdentifier_ShouldFail", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "application_data.email", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, constants.ApplicationData)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, constants.ApplicationData)
 			errDesc := utils.ExtractErrorDescription(err)
 			require.Contains(t, errDesc, "Application identifier is required", "Expected validation failure for missing application identifier")
 		})
 
 		t.Run("Add_TooDeepAttribute_ShouldFail", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "traits.orders.payment.card.type.extra", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, constants.Traits)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, constants.Traits)
 			errDesc := utils.ExtractErrorDescription(err)
 			require.Contains(t, errDesc, "Attribute exceeds the maximum depth of 4", "Expected validation failure for attribute depth > 4")
 		})
 
 		t.Run("Add_MaxDepthAttribute_ShouldSucceed", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "traits.orders.payment.card.type", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, constants.Traits)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Expected success for depth 4 attribute")
 			_ = svc.DeleteProfileSchema(SuperTenantOrg)
 			_ = svc.DeleteProfileSchemaAttributesByScope(SuperTenantOrg, constants.IdentityAttributes)
@@ -115,7 +115,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 		t.Run("Add_ValidSubAttribute_ShouldSucceed", func(t *testing.T) {
 			// Create sub-attribute first
 			subAttr := createAttr(SuperTenantOrg, "traits.orders.payment", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{subAttr}, constants.Traits)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{subAttr}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err)
 
 			// Create parent with sub-attribute (valid: one level deeper)
@@ -134,7 +134,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 				},
 			}
 
-			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{parent}, constants.Traits)
+			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{parent}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Expected success for valid sub-attribute relationship")
 			_ = svc.DeleteProfileSchema(SuperTenantOrg)
 			_ = svc.DeleteProfileSchemaAttributesByScope(SuperTenantOrg, constants.IdentityAttributes)
@@ -150,7 +150,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 				MergeStrategy: "combine",
 				Mutability:    constants.MutabilityReadWrite,
 			}
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{subAttr}, constants.Traits)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{subAttr}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Sub-attribute creation failed unexpectedly")
 
 			// Step 2: Parent referencing invalid deeper sub-attribute
@@ -169,7 +169,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 				},
 			}
 
-			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{parent}, constants.Traits)
+			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{parent}, SuperTenantOrg, constants.Traits)
 			errDesc := utils.ExtractErrorDescription(err)
 			require.Contains(t, errDesc, "one level deeper", "Expected failure due to invalid sub-attribute depth")
 			_ = svc.DeleteProfileSchema(SuperTenantOrg)
@@ -180,7 +180,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			// 1️ Level 4 leaf
 			l4 := createAttr(SuperTenantOrg, "traits.orders.payment.card.type",
 				constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l4}, constants.Traits)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l4}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Failed to add level 4 attribute")
 
 			// 2️Level 3 parent (complex) → references level 4
@@ -195,7 +195,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 					{AttributeId: l4.AttributeId, AttributeName: l4.AttributeName},
 				},
 			}
-			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l3}, constants.Traits)
+			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l3}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Failed to add level 3 attribute")
 
 			// 3️ Level 2 parent → references level 3
@@ -210,7 +210,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 					{AttributeId: l3.AttributeId, AttributeName: l3.AttributeName},
 				},
 			}
-			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l2}, constants.Traits)
+			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l2}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Failed to add level 2 attribute")
 
 			// 4️Level 1 parent → references level 2
@@ -225,7 +225,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 					{AttributeId: l2.AttributeId, AttributeName: l2.AttributeName},
 				},
 			}
-			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l1}, constants.Traits)
+			err = svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{l1}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err, "Failed to add top-level parent attribute")
 
 			//  Everything should pass, proving depth=4 hierarchy works correctly
@@ -240,7 +240,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			createAttr(SuperTenantOrg, "identity_attributes.email", constants.StringDataType, "combine", constants.MutabilityReadWrite),
 			createAttr(SuperTenantOrg, "identity_attributes.phone", constants.StringDataType, "combine", constants.MutabilityReadWrite),
 		}
-		_ = svc.AddProfileSchemaAttributesForScope(identityAttrs, constants.IdentityAttributes)
+		_ = svc.AddProfileSchemaAttributesForScope(identityAttrs, SuperTenantOrg, constants.IdentityAttributes)
 
 		// 2. Traits
 		traits := []model.ProfileSchemaAttribute{
@@ -254,7 +254,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 				MultiValued:   true,
 			},
 		}
-		_ = svc.AddProfileSchemaAttributesForScope(traits, constants.Traits)
+		_ = svc.AddProfileSchemaAttributesForScope(traits, SuperTenantOrg, constants.Traits)
 
 		// 3. Application Data
 		appData := []model.ProfileSchemaAttribute{
@@ -269,7 +269,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 				ApplicationIdentifier: "app_1",
 			},
 		}
-		_ = svc.AddProfileSchemaAttributesForScope(appData, constants.ApplicationData)
+		_ = svc.AddProfileSchemaAttributesForScope(appData, SuperTenantOrg, constants.ApplicationData)
 
 		t.Run("Get_ProfileSchema_Success", func(t *testing.T) {
 			schema, err := svc.GetProfileSchema(SuperTenantOrg)
@@ -282,7 +282,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 		t.Run("Get_ById_ShouldReturnMatchingAttribute", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "identity_attributes.phone_number", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, constants.IdentityAttributes)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, constants.IdentityAttributes)
 			require.NoError(t, err)
 
 			fetched, err := svc.GetProfileSchemaAttributeById(SuperTenantOrg, attr.AttributeId)
@@ -305,7 +305,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "identity_attributes.temp_field", constants.StringDataType, "combine", constants.MutabilityReadWrite)
 			attr.AttributeId = attrId
 
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, constants.IdentityAttributes)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, constants.IdentityAttributes)
 			require.NoError(t, err)
 
 			updates := map[string]interface{}{
@@ -331,7 +331,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 		t.Run("Delete_ProfileSchemaAttribute_ById", func(t *testing.T) {
 			attr := createAttr(SuperTenantOrg, "traits.to_delete", constants.StringDataType, "combine", constants.MutabilityReadWrite)
-			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, constants.Traits)
+			err := svc.AddProfileSchemaAttributesForScope([]model.ProfileSchemaAttribute{attr}, SuperTenantOrg, constants.Traits)
 			require.NoError(t, err)
 
 			err = svc.DeleteProfileSchemaAttributeById(SuperTenantOrg, attr.AttributeId)
