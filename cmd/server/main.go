@@ -56,7 +56,7 @@ func main() {
 
 	cdsHome := resolveCDSHome()
 	utils.SetCDSHome(cdsHome)
-	const configFile = "/repository/conf/deployment.yaml"
+	const configFile = "repository/conf/deployment.yaml"
 
 	envFiles, err := filepath.Glob("config/*.env")
 	if err != nil || len(envFiles) == 0 {
