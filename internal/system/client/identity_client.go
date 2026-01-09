@@ -23,7 +23,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"github.com/wso2/identity-customer-data-service/internal/system/utils"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,6 +30,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/wso2/identity-customer-data-service/internal/system/utils"
 
 	"github.com/google/uuid"
 	"github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
@@ -168,10 +169,11 @@ func (c *IdentityClient) fetchOrganizationToken(
 	baseForm := url.Values{}
 	baseForm.Set("grant_type", "system_app_grant")
 	baseForm.Set("scope", scope)
+	baseForm.Set("organizationId", orgId)
 	endpoint := c.buildTokenEndpoint("carbon.super", authCfg.TokenEndpoint)
 	logger.Debug(fmt.Sprintf("Fetching super-tenant system_app_grant token for org: %s", orgId))
 	// Note: The super-tenant token is not used directly — the grant exchange happens using client credentials.
-	_, err := c.requestToken(endpoint, authCfg.ClientID, authCfg.ClientSecret, baseForm, orgId)
+	token, err := c.requestToken(endpoint, authCfg.ClientID, authCfg.ClientSecret, baseForm, orgId)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to fetch super-tenant token for the organization:%s", orgId)
 		return "", errors2.NewServerError(errors2.ErrorMessage{
@@ -181,25 +183,8 @@ func (c *IdentityClient) fetchOrganizationToken(
 		}, err)
 	}
 
-	//  Exchange for organization token
-	exchangeForm := url.Values{}
-	exchangeForm.Set("grant_type", "system_app_grant")
-	exchangeForm.Set("scope", scope)
-	exchangeForm.Set("organizationId", orgId)
-
-	logger.Debug(fmt.Sprintf("Exchanging system_app_grant token for organization: %s", orgId))
-	orgToken, err := c.requestToken(endpoint, authCfg.ClientID, authCfg.ClientSecret, exchangeForm, orgId)
-	if err != nil {
-		errorMsg := fmt.Sprintf("Failed to exchange token for the organization:%s", orgId)
-		return "", errors2.NewServerError(errors2.ErrorMessage{
-			Code:        errors2.TOKEN_FETCH_FAILED.Code,
-			Message:     errors2.TOKEN_FETCH_FAILED.Message,
-			Description: errorMsg,
-		}, err)
-	}
-
 	logger.Debug(fmt.Sprintf("Successfully obtained organization-scoped token for org: %s", orgId))
-	return orgToken, nil
+	return token, nil
 }
 
 // fetchClientCredentialsToken obtains an organization-scoped token directly using client_credentials grant.
