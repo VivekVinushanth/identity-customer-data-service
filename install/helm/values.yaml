@@ -52,6 +52,7 @@ cloud:
           revocationEndpoint: "/oauth2/revoke"
           claimsEndpoint: "api/server/v1/claim-dialects"
           isSystemAppGrantEnabled: true
+          orgManagementServiceUrl: "api/asgardeo/org-mgt/v2/tenant/{}"
           certName: "wso2carbontls.cer"
 
       tls:

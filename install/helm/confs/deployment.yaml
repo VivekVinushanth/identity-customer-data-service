@@ -29,6 +29,7 @@ auth_server:
   admin_username: "${AUTH_SERVER_ADMIN_USERNAME}"
   admin_password: "${AUTH_SERVER_ADMIN_PASSWORD}"
   isSystemAppGrantEnabled: {{ .Values.cloud.deployment.cds.config.identityServer.isSystemAppGrantEnabled }}
+  orgManagementServiceEndpoint: "{{ .Values.cloud.deployment.cds.config.identityServer.orgManagementServiceEndpoint }}"
   required_scopes:
     profile:create:
       - "cds_profile_create"

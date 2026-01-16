@@ -32,6 +32,7 @@ auth_server:
   admin_username: "admin"
   admin_password: "${AUTH_SERVER_ADMIN_PASSWORD}"
   isSystemAppGrantEnabled: false
+  orgManagementServiceEndpoint: "/org-mgt/v2/tenant"
   required_scopes:
     profile:create:
       - "cds_profile_create"

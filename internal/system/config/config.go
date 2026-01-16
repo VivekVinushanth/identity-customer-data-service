@@ -32,18 +32,19 @@ type AuthConfig struct {
 }
 
 type AuthServerConfig struct {
-	Host                    string              `yaml:"host"`
-	Port                    string              `yaml:"port"`
-	IntrospectionEndPoint   string              `yaml:"introspectionEndpoint"`
-	TokenEndpoint           string              `yaml:"tokenEndpoint"`
-	RevocationEndpoint      string              `yaml:"revocationEndpoint"`
-	ClaimEndpoint           string              `yaml:"claim_endpoint"`
-	ClientID                string              `yaml:"client_id"`
-	ClientSecret            string              `yaml:"client_secret"`
-	AdminUsername           string              `yaml:"admin_username"`
-	AdminPassword           string              `yaml:"admin_password"`
-	RequiredScopes          map[string][]string `yaml:"required_scopes"`
-	IsSystemAppGrantEnabled bool                `yaml:"isSystemAppGrantEnabled"`
+	Host                         string              `yaml:"host"`
+	Port                         string              `yaml:"port"`
+	IntrospectionEndPoint        string              `yaml:"introspectionEndpoint"`
+	TokenEndpoint                string              `yaml:"tokenEndpoint"`
+	RevocationEndpoint           string              `yaml:"revocationEndpoint"`
+	ClaimEndpoint                string              `yaml:"claim_endpoint"`
+	ClientID                     string              `yaml:"client_id"`
+	ClientSecret                 string              `yaml:"client_secret"`
+	AdminUsername                string              `yaml:"admin_username"`
+	AdminPassword                string              `yaml:"admin_password"`
+	RequiredScopes               map[string][]string `yaml:"required_scopes"`
+	IsSystemAppGrantEnabled      bool                `yaml:"isSystemAppGrantEnabled"`
+	OrgManagementServiceEndpoint string              `yaml:"org_management_service_endpoint"`
 }
 
 type DataSourceConfig struct {
@@ -66,10 +67,9 @@ type Config struct {
 }
 
 type TLSConfig struct {
-	MTLSEnabled             bool   `yaml:"mtls_enabled"`
-	CertDir                 string `yaml:"cert_dir"`
-	CDSPublicCert           string `yaml:"server_cert"`
-	CDSPrivateKey           string `yaml:"server_key"`
-	IdentityServerPublicKey string `yaml:"client_cert"`
-	TrustStore              string `yaml:"trust_store"`
+	MTLSEnabled   bool   `yaml:"mtls_enabled"`
+	CertDir       string `yaml:"cert_dir"`
+	CDSPublicCert string `yaml:"server_cert"`
+	CDSPrivateKey string `yaml:"server_key"`
+	TrustStore    string `yaml:"trust_store"`
 }
