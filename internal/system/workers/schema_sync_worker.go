@@ -19,59 +19,39 @@
 package workers
 
 import (
+	"context"
 	"fmt"
 
-	"github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
-	"github.com/wso2/identity-customer-data-service/internal/profile_schema/provider"
-	"github.com/wso2/identity-customer-data-service/internal/system/constants"
+	schemaModel "github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
+	schemaProvider "github.com/wso2/identity-customer-data-service/internal/profile_schema/provider"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
+	"github.com/wso2/identity-customer-data-service/internal/system/queue"
 )
 
-var SchemaSyncQueue chan model.ProfileSchemaSync
+type SchemaSyncWorker struct {
+	q queue.Queue[schemaModel.ProfileSchemaSync]
+}
 
-// StartSchemaSyncWorker initializes and starts the schema sync worker
-func StartSchemaSyncWorker() {
+func NewSchemaSyncWorker(q queue.Queue[schemaModel.ProfileSchemaSync]) *SchemaSyncWorker {
+	return &SchemaSyncWorker{q: q}
+}
 
-	// Initialize the queue with a buffer size (configurable in future via config)
-	SchemaSyncQueue = make(chan model.ProfileSchemaSync, constants.DefaultQueueSize)
-	go func() {
-		for schemaSync := range SchemaSyncQueue {
-			processSchemaSyncJob(schemaSync)
+func (w *SchemaSyncWorker) Start(ctx context.Context) error {
+	return w.q.Start(ctx, func(ctx context.Context, job schemaModel.ProfileSchemaSync) error {
+		logger := log.GetLogger()
+		logger.Info(fmt.Sprintf("Processing schema sync job for tenant: %s, event: %s", job.OrgId, job.Event))
+
+		svc := schemaProvider.NewProfileSchemaProvider().GetProfileSchemaService()
+		if err := svc.SyncProfileSchema(job.OrgId); err != nil {
+			logger.Error(fmt.Sprintf("Failed to sync profile schema for tenant: %s", job.OrgId), log.Error(err))
+			return err
 		}
-	}()
+
+		logger.Info(fmt.Sprintf("Profile schema sync completed successfully for tenant: %s", job.OrgId))
+		return nil
+	})
 }
 
-// EnqueueSchemaSyncJob adds a schema sync job to the queue
-func EnqueueSchemaSyncJob(schemaSync model.ProfileSchemaSync) bool {
-	if SchemaSyncQueue == nil {
-		log.GetLogger().Error("Schema sync queue is not initialized. Cannot enqueue job.")
-		return false
-	}
-
-	// Use non-blocking send to avoid hanging if queue is full
-	select {
-	case SchemaSyncQueue <- schemaSync:
-		return true
-	default:
-		log.GetLogger().Error(fmt.Sprintf("Schema sync queue is full. Cannot enqueue job for tenant: %s", schemaSync.OrgId))
-		return false
-	}
-}
-
-// processSchemaSyncJob processes a schema sync job
-func processSchemaSyncJob(schemaSync model.ProfileSchemaSync) {
-
-	logger := log.GetLogger()
-	logger.Info(fmt.Sprintf("Processing schema sync job for tenant: %s, event: %s", schemaSync.OrgId, schemaSync.Event))
-
-	schemaProvider := provider.NewProfileSchemaProvider()
-	schemaService := schemaProvider.GetProfileSchemaService()
-
-	err := schemaService.SyncProfileSchema(schemaSync.OrgId)
-	if err != nil {
-		logger.Error(fmt.Sprintf("Failed to sync profile schema for tenant: %s", schemaSync.OrgId), log.Error(err))
-		return
-	}
-
-	logger.Info(fmt.Sprintf("Profile schema sync completed successfully for tenant: %s", schemaSync.OrgId))
+func (w *SchemaSyncWorker) Enqueue(ctx context.Context, job schemaModel.ProfileSchemaSync) error {
+	return w.q.Enqueue(ctx, job)
 }

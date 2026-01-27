@@ -1,18 +1,10 @@
 package constants
 
 const ApiBasePath = "/cds/api"
-const ProfileApiPath = "profiles"
-const UnificationRulesApiPath = "unification-rules"
-const ConsentApiPath = "consent"
-const ProfileSchemaApiPath = "profile-schema"
-const IdentityServerDialectsPath = "/api/server/v1/claim-dialects"
 const Filter = "filter"
-const Attributes = "attributes"     // Query parameter to filter attributes in the request.
 const ProfileCookie = "cds_profile" // Cookie name to store cookie that corresponds to profile ID.
-const DefaultTenant = "carbon.super"
 const SpaceSeparator = " "
 const SystemAppHeader = "SystemApp"
-const DefaultQueueSize = 1000
 
 type contextKey string
 
@@ -119,12 +111,6 @@ var AllowedConditionOperators = map[string]bool{
 	"less_than_equals":    true,
 }
 
-var AllowedEventTypes = map[string]bool{
-	"page":     true,
-	"track":    true,
-	"identify": true,
-}
-
 var AllowedConsentPurposes = map[string]bool{
 	"profiling":       true,
 	"personalization": true,
@@ -164,3 +150,14 @@ var AllowedFilterFieldsForSchema = map[string]bool{
 	"application_identifier": true,
 	"value_type":             true,
 }
+
+const (
+	MemoryQueueProvider   = "memory"
+	ActiveMQQueueProvider = "activemq"
+
+	DefaultSchemaSyncQueueSize  = 1000
+	DefaultUnificationQueueSize = 2000
+
+	SchemaSyncQueueName  = "schema-sync"
+	UnificationQueueName = "profile-unification"
+)

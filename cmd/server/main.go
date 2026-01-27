@@ -19,6 +19,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"fmt"
@@ -87,11 +88,16 @@ func main() {
 	// Initialize database
 	initDatabaseFromConfig(cdsConfig)
 
-	// Initialize Profile worker
-	workers.StartProfileWorker()
-
-	// Initialize Schema Sync worker
-	workers.StartSchemaSyncWorker()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	mgr, err := workers.Init(ctx, cdsConfig)
+	// Optional: close queues on shutdown
+	defer func() {
+		if mgr != nil {
+			_ = mgr.SchemaSyncWorker.Close()
+			_ = mgr.ProfileWorker.Close()
+		}
+	}()
 
 	serverAddr := fmt.Sprintf("%s:%d", cdsConfig.Addr.Host, cdsConfig.Addr.Port)
 	mux := enableCORS(initMultiplexer())

@@ -81,7 +81,7 @@ func Test_Complex_Unification_Scenarios(t *testing.T) {
 	require.NoError(t, err1)
 	require.NoError(t, err2)
 
-	// Setup Unification Rules with priorities: user_id (0) > email (1) > phone (2)
+	// Setup ProfileWorker Rules with priorities: user_id (0) > email (1) > phone (2)
 	profileSvc := profileService.GetProfilesService()
 	unificationSvc := unificationService.GetUnificationRuleService()
 

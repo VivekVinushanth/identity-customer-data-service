@@ -19,9 +19,10 @@
 package config
 
 import (
-	"gopkg.in/yaml.v2"
 	"os"
 	"path"
+
+	"gopkg.in/yaml.v2"
 )
 
 // LoadConfig loads and sets AppConfig (global variable)
@@ -45,4 +46,19 @@ func OverrideCDSRuntime(conf Config) {
 	runtimeConfig = &CDSRuntime{
 		Config: conf,
 	}
+}
+
+func LoadProviderConfig(path string) (map[string]any, error) {
+	if path == "" {
+		return map[string]any{}, nil
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]any{}
+	if err := yaml.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	return out, nil
 }

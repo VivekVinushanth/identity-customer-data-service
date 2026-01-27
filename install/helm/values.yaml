@@ -55,6 +55,9 @@ cloud:
           isSystemAppGrantEnabled: true
           certName: "wso2carbontls.cer"
 
+          queue:
+            provider: "memory"
+
       tls:
         mtls_enabled: false
         cert_dir : "/app/repository/certs"

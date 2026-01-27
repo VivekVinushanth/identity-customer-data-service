@@ -55,7 +55,7 @@ func (urs *UnificationRuleService) AddUnificationRule(rule model.UnificationRule
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.UNIFICATION_RULE_ALREADY_EXISTS.Code,
 			Message:     errors2.UNIFICATION_RULE_ALREADY_EXISTS.Message,
-			Description: fmt.Sprintf("Unification rule with property %s already exists", rule.PropertyName),
+			Description: fmt.Sprintf("ProfileWorker rule with property %s already exists", rule.PropertyName),
 		}, http.StatusConflict)
 	}
 
@@ -84,7 +84,7 @@ func (urs *UnificationRuleService) AddUnificationRule(rule model.UnificationRule
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:    errors2.ADD_UNIFICATION_RULE.Code,
 			Message: errors2.ADD_UNIFICATION_RULE.Message,
-			Description: "Unification rule with property " + rule.PropertyName + " is not allowed as it is a complex data type. " +
+			Description: "ProfileWorker rule with property " + rule.PropertyName + " is not allowed as it is a complex data type. " +
 				"Choose the sub-attribute instead.",
 		}, http.StatusBadRequest)
 	}
@@ -99,14 +99,14 @@ func (urs *UnificationRuleService) AddUnificationRule(rule model.UnificationRule
 			return errors2.NewClientError(errors2.ErrorMessage{
 				Code:        errors2.UNIFICATION_RULE_ALREADY_EXISTS.Code,
 				Message:     errors2.UNIFICATION_RULE_ALREADY_EXISTS.Message,
-				Description: fmt.Sprintf("Unification rule with property %s already exists", rule.PropertyName),
+				Description: fmt.Sprintf("ProfileWorker rule with property %s already exists", rule.PropertyName),
 			}, http.StatusConflict)
 		}
 		if existingRule.Priority == rule.Priority {
 			return errors2.NewClientError(errors2.ErrorMessage{
 				Code:        errors2.UNIFICATION_RULE_PRIORITY_EXISTS.Code,
 				Message:     errors2.UNIFICATION_RULE_PRIORITY_EXISTS.Message,
-				Description: "Unification rule with same priority exist.",
+				Description: "ProfileWorker rule with same priority exist.",
 			}, http.StatusBadRequest)
 		}
 	}
@@ -131,7 +131,7 @@ func (urs *UnificationRuleService) GetUnificationRule(ruleId string) (*model.Uni
 		return nil, errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.UNIFICATION_RULE_NOT_FOUND.Code,
 			Message:     errors2.UNIFICATION_RULE_NOT_FOUND.Message,
-			Description: fmt.Sprintf("Unification rule: %s not found", ruleId),
+			Description: fmt.Sprintf("ProfileWorker rule: %s not found", ruleId),
 		}, http.StatusNotFound)
 	}
 	return unificationRule, err
@@ -165,7 +165,7 @@ func (urs *UnificationRuleService) PatchUnificationRule(ruleId, tenantId string,
 			return errors2.NewClientError(errors2.ErrorMessage{
 				Code:        errors2.UNIFICATION_RULE_PRIORITY_EXISTS.Code,
 				Message:     errors2.UNIFICATION_RULE_PRIORITY_EXISTS.Message,
-				Description: "Unification rule with same priority exist.",
+				Description: "ProfileWorker rule with same priority exist.",
 			}, http.StatusBadRequest)
 		}
 	}

@@ -118,7 +118,7 @@ func Test_UnificationRule(t *testing.T) {
 	t.Run("Get_all_unification_rules", func(t *testing.T) {
 		rules, err := unificationRuleService.GetUnificationRules(SuperTenantOrg)
 		require.NoError(t, err, "Failed to fetch unification rules")
-		require.NotEmpty(t, rules, "Unification rule list is empty")
+		require.NotEmpty(t, rules, "ProfileWorker rule list is empty")
 	})
 
 	t.Run("Update_unification_rule", func(t *testing.T) {

@@ -57,6 +57,11 @@ type DataSourceConfig struct {
 	SSLMode  string `yaml:"sslmode"`
 }
 
+type QueueConfig struct {
+	Provider       string `yaml:"provider"`
+	ProviderConfig string `yaml:"provider_config"`
+}
+
 type Config struct {
 	Addr       AddrConfig       `yaml:"addr"`
 	Log        LogConfig        `yaml:"log"`
@@ -64,6 +69,7 @@ type Config struct {
 	AuthServer AuthServerConfig `yaml:"auth_server"`
 	DataSource DataSourceConfig `yaml:"datasource"`
 	TLS        TLSConfig        `yaml:"tls"`
+	Queue      QueueConfig      `yaml:"queue"`
 }
 
 type TLSConfig struct {

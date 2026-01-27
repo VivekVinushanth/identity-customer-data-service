@@ -364,11 +364,11 @@ var (
 
 	UNIFICATION_RULE_ALREADY_EXISTS = ErrorMessage{
 		Code:    errorPrefix + "12203",
-		Message: "Unification already exist.",
+		Message: "ProfileWorker already exist.",
 	}
 	UNIFICATION_RULE_PRIORITY_EXISTS = ErrorMessage{
 		Code:    errorPrefix + "12204",
-		Message: "Unification priority already taken.",
+		Message: "ProfileWorker priority already taken.",
 	}
 
 	INVALID_FILTER_FORMAT = ErrorMessage{

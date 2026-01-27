@@ -1,6 +1,7 @@
 package workers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -12,44 +13,48 @@ import (
 	profileStore "github.com/wso2/identity-customer-data-service/internal/profile/store"
 	schemaModel "github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
 	schemaStore "github.com/wso2/identity-customer-data-service/internal/profile_schema/store"
-	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
+	"github.com/wso2/identity-customer-data-service/internal/system/queue"
 	"github.com/wso2/identity-customer-data-service/internal/system/utils"
 	"github.com/wso2/identity-customer-data-service/internal/unification_rules/model"
 	"github.com/wso2/identity-customer-data-service/internal/unification_rules/provider"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
-var UnificationQueue chan profileModel.Profile
+type ProfileUnificationJob struct {
+	TenantId  string `json:"tenant_id"`
+	ProfileId string `json:"profile_id"`
+}
 
-func StartProfileWorker() {
+type ProfileWorker struct {
+	q queue.Queue[ProfileUnificationJob]
+}
 
-	UnificationQueue = make(chan profileModel.Profile, constants.DefaultQueueSize)
+func NewProfileWorker(q queue.Queue[ProfileUnificationJob]) *ProfileWorker {
+	return &ProfileWorker{q: q}
+}
 
-	go func() {
-		for profile := range UnificationQueue {
+func (w *ProfileWorker) Start(ctx context.Context) error {
+	return w.q.Start(ctx, func(ctx context.Context, job ProfileUnificationJob) error {
+		logger := log.GetLogger()
 
-			// Unify
-			profile, err := profileStore.GetProfile(profile.ProfileId)
-			if err == nil && profile != nil {
-				unifyProfiles(*profile)
-			}
+		p, err := profileStore.GetProfile(job.ProfileId)
+		if err != nil {
+			logger.Error(fmt.Sprintf("Failed to fetch profile for unification. profile_id=%s", job.ProfileId), log.Error(err))
+			return err
 		}
-	}()
+		if p == nil {
+			logger.Warn(fmt.Sprintf("Profile not found for unification. profile_id=%s", job.ProfileId))
+			return nil
+		}
+
+		unifyProfiles(*p) // keep your existing unifyProfiles() implementation as-is
+		return nil
+	})
 }
 
-func EnqueueProfileForProcessing(profile profileModel.Profile) {
-	if UnificationQueue != nil {
-		UnificationQueue <- profile
-	}
-}
-
-// ProfileWorkerQueue Define a struct that implements the EventQueue interface
-type ProfileWorkerQueue struct{}
-
-// Enqueue Implement the Enqueue method for ProfileWorkerQueue
-func (q *ProfileWorkerQueue) Enqueue(profile profileModel.Profile) {
-	EnqueueProfileForProcessing(profile)
+func (w *ProfileWorker) Enqueue(ctx context.Context, job ProfileUnificationJob) error {
+	return w.q.Enqueue(ctx, job)
 }
 
 // unifyProfiles unifies profiles based on unification rules

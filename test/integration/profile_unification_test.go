@@ -90,7 +90,7 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 	require.NoError(t, err1)
 	require.NoError(t, err2)
 
-	// Setup Unification Rules
+	// Setup ProfileWorker Rules
 	profileSvc := profileService.GetProfilesService()
 	unificationSvc := unificationService.GetUnificationRuleService()
 
@@ -416,7 +416,7 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 
 		require.NotNil(t, p2AppData[AppB_Id]["ui_mode"], "Profile 2 ui_mode should not be nil")
 		require.NotNil(t, p2AppData[AppA_Id]["ui_mode"], "Profile 2 ui_mode should not be nil")
-		
+
 		cleanProfiles(profileSvc, SuperTenantOrg)
 	})
 
