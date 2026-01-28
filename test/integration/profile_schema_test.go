@@ -16,7 +16,7 @@ import (
 // createAttr is a helper to quickly generate a schema attribute.
 func createAttr(org, name, vType, merge, mut string) model.ProfileSchemaAttribute {
 	return model.ProfileSchemaAttribute{
-		OrgId:                 org,
+		OrgHandle:             org,
 		AttributeId:           uuid.New().String(),
 		AttributeName:         name,
 		ValueType:             vType,
@@ -45,7 +45,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			// 2. Traits
 			traits := []model.ProfileSchemaAttribute{
 				{
-					OrgId:         SuperTenantOrg,
+					OrgHandle:     SuperTenantOrg,
 					AttributeId:   uuid.New().String(),
 					AttributeName: "traits.interests",
 					ValueType:     constants.StringDataType,
@@ -60,7 +60,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			// 3. Application Data
 			appData := []model.ProfileSchemaAttribute{
 				{
-					OrgId:                 SuperTenantOrg,
+					OrgHandle:             SuperTenantOrg,
 					AttributeId:           uuid.New().String(),
 					AttributeName:         "application_data.device_id",
 					ValueType:             constants.StringDataType,
@@ -73,7 +73,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			err = svc.AddProfileSchemaAttributesForScope(appData, constants.ApplicationData, SuperTenantOrg)
 			require.NoError(t, err, "Failed to add application_data attributes")
 
-			_ = svc.DeleteProfileSchema(SuperTenantOrg)	
+			_ = svc.DeleteProfileSchema(SuperTenantOrg)
 			_ = svc.DeleteProfileSchemaAttributesByScope(SuperTenantOrg, constants.IdentityAttributes)
 		})
 
@@ -101,7 +101,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 		t.Run("Add_SameAttributeNameDifferentApps_ShouldSucceed", func(t *testing.T) {
 			// Test that the same attribute name can be used for different applications
 			app1Attr := model.ProfileSchemaAttribute{
-				OrgId:                 SuperTenantOrg,
+				OrgHandle:             SuperTenantOrg,
 				AttributeId:           uuid.New().String(),
 				AttributeName:         "application_data.theme",
 				ValueType:             constants.StringDataType,
@@ -114,7 +114,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// Add the SAME attribute name for a DIFFERENT application - should succeed
 			app2Attr := model.ProfileSchemaAttribute{
-				OrgId:                 SuperTenantOrg,
+				OrgHandle:             SuperTenantOrg,
 				AttributeId:           uuid.New().String(),
 				AttributeName:         "application_data.theme",
 				ValueType:             constants.StringDataType,
@@ -129,7 +129,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 			schema, err := svc.GetProfileSchema(SuperTenantOrg)
 			require.NoError(t, err)
 			appDataSchemaMap := schema[constants.ApplicationData].(map[string][]model.ProfileSchemaAttribute)
-			
+
 			mobileThemeFound := false
 			webThemeFound := false
 			for _, attrs := range appDataSchemaMap {
@@ -153,7 +153,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 		t.Run("Add_SameAttributeNameSameApp_ShouldFail", func(t *testing.T) {
 			// Test that duplicate attribute for the SAME application is blocked
 			app1Attr := model.ProfileSchemaAttribute{
-				OrgId:                 SuperTenantOrg,
+				OrgHandle:             SuperTenantOrg,
 				AttributeId:           uuid.New().String(),
 				AttributeName:         "application_data.language",
 				ValueType:             constants.StringDataType,
@@ -166,7 +166,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// Try to add the SAME attribute for the SAME application - should fail
 			duplicateAttr := model.ProfileSchemaAttribute{
-				OrgId:                 SuperTenantOrg,
+				OrgHandle:             SuperTenantOrg,
 				AttributeId:           uuid.New().String(),
 				AttributeName:         "application_data.language",
 				ValueType:             constants.StringDataType,
@@ -205,7 +205,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// Create parent with sub-attribute (valid: one level deeper)
 			parent := model.ProfileSchemaAttribute{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.orders",
 				ValueType:     constants.ComplexDataType,
@@ -228,7 +228,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 		t.Run("Add_InvalidSubAttribute_ShouldFail", func(t *testing.T) {
 			// Step 1: Create sub-attribute first
 			subAttr := model.ProfileSchemaAttribute{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.orders.payment.card.type", // depth 4
 				ValueType:     constants.StringDataType,
@@ -240,7 +240,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// Step 2: Parent referencing invalid deeper sub-attribute
 			parent := model.ProfileSchemaAttribute{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.orders",
 				ValueType:     constants.ComplexDataType,
@@ -270,7 +270,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// 2️Level 3 parent (complex) → references level 4
 			l3 := model.ProfileSchemaAttribute{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.orders.payment.card",
 				ValueType:     constants.ComplexDataType,
@@ -285,7 +285,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// 3️ Level 2 parent → references level 3
 			l2 := model.ProfileSchemaAttribute{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.orders.payment",
 				ValueType:     constants.ComplexDataType,
@@ -300,7 +300,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 
 			// 4️Level 1 parent → references level 2
 			l1 := model.ProfileSchemaAttribute{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.orders",
 				ValueType:     constants.ComplexDataType,
@@ -330,7 +330,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 		// 2. Traits
 		traits := []model.ProfileSchemaAttribute{
 			{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.interests",
 				ValueType:     constants.StringDataType,
@@ -344,7 +344,7 @@ func Test_ProfileSchemaService(t *testing.T) {
 		// 3. Application Data
 		appData := []model.ProfileSchemaAttribute{
 			{
-				OrgId:                 SuperTenantOrg,
+				OrgHandle:             SuperTenantOrg,
 				AttributeId:           uuid.New().String(),
 				AttributeName:         "application_data.device_id",
 				ValueType:             constants.StringDataType,

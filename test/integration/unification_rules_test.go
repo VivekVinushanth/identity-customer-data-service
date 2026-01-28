@@ -25,7 +25,7 @@ func Test_UnificationRule(t *testing.T) {
 	t.Run("Pre-requisite: Add_schema_attribute", func(t *testing.T) {
 		schemaAttributes := []profileSchema.ProfileSchemaAttribute{
 			{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeName: "identity_attributes.email",
 				AttributeId:   uuid.New().String(),
 				ValueType:     constants.StringDataType,
@@ -64,7 +64,7 @@ func Test_UnificationRule(t *testing.T) {
 	t.Run("Reject_complex_attribute_in_unification_rule", func(t *testing.T) {
 		//  Add a valid sub-attribute
 		subAttr := profileSchema.ProfileSchemaAttribute{
-			OrgId:         SuperTenantOrg,
+			OrgHandle:     SuperTenantOrg,
 			AttributeId:   uuid.New().String(),
 			AttributeName: "traits.orders.payment.method",
 			ValueType:     constants.StringDataType,
@@ -76,7 +76,7 @@ func Test_UnificationRule(t *testing.T) {
 
 		//  Add parent complex attribute referencing sub-attribute
 		parentAttr := profileSchema.ProfileSchemaAttribute{
-			OrgId:         SuperTenantOrg,
+			OrgHandle:     SuperTenantOrg,
 			AttributeId:   uuid.New().String(),
 			AttributeName: "traits.orders.payment",
 			ValueType:     constants.ComplexDataType,

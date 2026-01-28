@@ -57,27 +57,27 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 	profileSchemaSvc := schemaService.GetProfileSchemaService()
 
 	identityAttr := []schemaModel.ProfileSchemaAttribute{
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email", ValueType: constants.StringDataType, MergeStrategy: "combine",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email", ValueType: constants.StringDataType, MergeStrategy: "combine",
 			Mutability: constants.MutabilityReadWrite, MultiValued: true},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.phone_number", ValueType: constants.StringDataType,
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.phone_number", ValueType: constants.StringDataType,
 			MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.user_id", ValueType: constants.StringDataType, MergeStrategy: "combine",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.user_id", ValueType: constants.StringDataType, MergeStrategy: "combine",
 			Mutability: constants.MutabilityReadWrite},
 	}
 
 	traits := []schemaModel.ProfileSchemaAttribute{
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.interests", ValueType: constants.StringDataType, MergeStrategy: "combine",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.interests", ValueType: constants.StringDataType, MergeStrategy: "combine",
 			Mutability: constants.MutabilityReadWrite, MultiValued: true},
 	}
 
 	appData := []schemaModel.ProfileSchemaAttribute{
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "application_data.device_id", ValueType: constants.StringDataType, MergeStrategy: "combine",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "application_data.device_id", ValueType: constants.StringDataType, MergeStrategy: "combine",
 			Mutability: constants.MutabilityReadWrite, MultiValued: true, ApplicationIdentifier: AppId},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(),
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(),
 			AttributeName: "application_data.ui_mode",
 			ValueType:     constants.StringDataType, MergeStrategy: "overwrite",
 			Mutability: constants.MutabilityReadWrite, ApplicationIdentifier: AppA_Id},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(),
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(),
 			AttributeName: "application_data.ui_mode",
 			ValueType:     constants.StringDataType, MergeStrategy: "overwrite",
 			Mutability: constants.MutabilityReadWrite, ApplicationIdentifier: AppB_Id},
@@ -326,7 +326,7 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 
 		OtherTenant := fmt.Sprintf("other.org-%d", time.Now().UnixNano())
 		identityAttr := []schemaModel.ProfileSchemaAttribute{
-			{OrgId: OtherTenant, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email", ValueType: constants.StringDataType, MergeStrategy: "combine",
+			{OrgHandle: OtherTenant, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email", ValueType: constants.StringDataType, MergeStrategy: "combine",
 				Mutability: constants.MutabilityReadWrite, MultiValued: true},
 		}
 		err = profileSchemaSvc.AddProfileSchemaAttributesForScope(identityAttr, constants.IdentityAttributes, OtherTenant)
@@ -416,7 +416,7 @@ func Test_Profile_Unification_Scenarios(t *testing.T) {
 
 		require.NotNil(t, p2AppData[AppB_Id]["ui_mode"], "Profile 2 ui_mode should not be nil")
 		require.NotNil(t, p2AppData[AppA_Id]["ui_mode"], "Profile 2 ui_mode should not be nil")
-		
+
 		cleanProfiles(profileSvc, SuperTenantOrg)
 	})
 

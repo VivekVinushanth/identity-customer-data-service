@@ -45,7 +45,7 @@ func Test_Profile(t *testing.T) {
 
 		identityAttributes := []profileSchema.ProfileSchemaAttribute{
 			{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "identity_attributes.email",
 				ValueType:     constants.StringDataType,
@@ -57,7 +57,7 @@ func Test_Profile(t *testing.T) {
 
 		traits := []profileSchema.ProfileSchemaAttribute{
 			{
-				OrgId:         SuperTenantOrg,
+				OrgHandle:     SuperTenantOrg,
 				AttributeId:   uuid.New().String(),
 				AttributeName: "traits.interests",
 				ValueType:     constants.StringDataType,
@@ -69,7 +69,7 @@ func Test_Profile(t *testing.T) {
 
 		appData := []profileSchema.ProfileSchemaAttribute{
 			{
-				OrgId:                 SuperTenantOrg,
+				OrgHandle:             SuperTenantOrg,
 				AttributeId:           uuid.New().String(),
 				AttributeName:         "application_data.device_id",
 				ValueType:             constants.StringDataType,

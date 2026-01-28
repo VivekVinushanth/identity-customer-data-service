@@ -80,7 +80,7 @@ func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(schemaAttribut
 			return clientError
 		}
 
-		existing, err := psstr.GetProfileSchemaAttributeByName(attr.OrgId, attr.AttributeName)
+		existing, err := psstr.GetProfileSchemaAttributeByName(attr.OrgHandle, attr.AttributeName)
 		if err != nil {
 			return err
 		}
@@ -88,8 +88,8 @@ func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(schemaAttribut
 			// For application_data attributes, check both attribute name AND application identifier
 			if scope == constants.ApplicationData {
 				if existing.ApplicationIdentifier == attr.ApplicationIdentifier {
-					errorMsg := fmt.Sprintf("Attribute '%s' already exists for application '%s' in org '%s'", 
-						attr.AttributeName, attr.ApplicationIdentifier, attr.OrgId)
+					errorMsg := fmt.Sprintf("Attribute '%s' already exists for application '%s' in org '%s'",
+						attr.AttributeName, attr.ApplicationIdentifier, attr.OrgHandle)
 					clientError := errors2.NewClientError(errors2.ErrorMessage{
 						Code:        errors2.SCHEMA_ATTRIBUTE_ALREADY_EXISTS.Code,
 						Message:     errors2.SCHEMA_ATTRIBUTE_ALREADY_EXISTS.Message,
@@ -99,7 +99,7 @@ func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(schemaAttribut
 				}
 			} else {
 				// For non-application attributes, duplicate names are not allowed
-				errorMsg := fmt.Sprintf("Attribute '%s' already exists for org '%s'", attr.AttributeName, attr.OrgId)
+				errorMsg := fmt.Sprintf("Attribute '%s' already exists for org '%s'", attr.AttributeName, attr.OrgHandle)
 				clientError := errors2.NewClientError(errors2.ErrorMessage{
 					Code:        errors2.SCHEMA_ATTRIBUTE_ALREADY_EXISTS.Code,
 					Message:     errors2.SCHEMA_ATTRIBUTE_ALREADY_EXISTS.Message,
@@ -210,7 +210,7 @@ func (s *ProfileSchemaService) validateSchemaAttribute(attr model.ProfileSchemaA
 				return clientError, false
 			}
 
-			subAttribute, err := s.GetProfileSchemaAttributeById(attr.OrgId, subAttr.AttributeId)
+			subAttribute, err := s.GetProfileSchemaAttributeById(attr.OrgHandle, subAttr.AttributeId)
 			if err != nil {
 				clientError := errors2.NewClientError(errors2.ErrorMessage{
 					Code:        errors2.INVALID_ATTRIBUTE_NAME.Code,
@@ -377,7 +377,7 @@ func (s *ProfileSchemaService) PatchProfileSchemaAttributeById(orgId, attributeI
 
 	// todo: ensure NPE - see if u need to update application identifier also...its PUT as well. So yeah.
 	err, isValid := s.validateSchemaAttribute(model.ProfileSchemaAttribute{
-		OrgId:                 orgId,
+		OrgHandle:             orgId,
 		AttributeId:           attributeId,
 		AttributeName:         updates["attribute_name"].(string),
 		ValueType:             updates["value_type"].(string),

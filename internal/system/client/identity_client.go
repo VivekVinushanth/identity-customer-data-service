@@ -403,7 +403,7 @@ func (c *IdentityClient) GetProfileSchema(orgHandle string) ([]model.ProfileSche
 				}
 				logger.Warn(fmt.Sprintf("Adding synthetic parent attribute: %s", parent))
 				result = append(result, model.ProfileSchemaAttribute{
-					OrgId:         orgHandle,
+					OrgHandle:     orgHandle,
 					AttributeId:   uuid.New().String(),
 					AttributeName: parent,
 					ValueType:     constants.ComplexDataType,
@@ -578,7 +578,7 @@ func ConvertSCIMClaimWithLocal(
 	scim map[string]interface{},
 	local map[string]interface{},
 	allClaims []map[string]interface{},
-	orgId, dialectURI string,
+	orgHandle, dialectURI string,
 ) (model.ProfileSchemaAttribute, *model.SubAttribute, string) {
 
 	claimURI := fmt.Sprintf("%v", scim["claimURI"])
@@ -659,7 +659,7 @@ func ConvertSCIMClaimWithLocal(
 			AttributeName: fullAttrName,
 		}
 		return model.ProfileSchemaAttribute{
-			OrgId:           orgId,
+			OrgHandle:       orgHandle,
 			AttributeId:     subAttr.AttributeId,
 			AttributeName:   fullAttrName,
 			ValueType:       valueType,
@@ -674,7 +674,7 @@ func ConvertSCIMClaimWithLocal(
 
 	// It's a top-level or parent attribute
 	return model.ProfileSchemaAttribute{
-		OrgId:           orgId,
+		OrgHandle:       orgHandle,
 		AttributeId:     fmt.Sprintf("%v", uuid.New().String()),
 		AttributeName:   fullAttrName,
 		ValueType:       valueType,

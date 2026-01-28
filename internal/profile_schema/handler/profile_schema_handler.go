@@ -61,8 +61,11 @@ func (psh *ProfileSchemaHandler) AddProfileSchemaAttributesForScope(w http.Respo
 		utils.HandleError(w, err)
 		return
 	}
-	var schemaAttributes []model.ProfileSchemaAttribute
-	if err := json.NewDecoder(r.Body).Decode(&schemaAttributes); err != nil {
+	var schemaAttributes []model.ProfileSchemaAttributeAddRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	err = decoder.Decode(&schemaAttributes)
+	if err != nil {
 		clientError := errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.PROFILE_SCHEMA_ADD_BAD_REQUEST.Code,
 			Message:     errors2.PROFILE_SCHEMA_ADD_BAD_REQUEST.Message,
@@ -100,6 +103,7 @@ func (psh *ProfileSchemaHandler) AddProfileSchemaAttributesForScope(w http.Respo
 		utils.WriteErrorResponse(w, clientError)
 		return
 	}
+
 	// Generate a new UUID for each attribute if not provided
 	for i := range schemaAttributes {
 		if schemaAttributes[i].AttributeId == "" {
@@ -108,8 +112,9 @@ func (psh *ProfileSchemaHandler) AddProfileSchemaAttributesForScope(w http.Respo
 		if schemaAttributes[i].Mutability == "" {
 			schemaAttributes[i].Mutability = constants.MutabilityReadWrite
 		}
-		schemaAttributes[i].OrgId = orgHandle
+		schemaAttributes[i].OrgHandle = orgHandle
 	}
+
 	schemaProvider := provider.NewProfileSchemaProvider()
 	schemaService := schemaProvider.GetProfileSchemaService()
 	err = schemaService.AddProfileSchemaAttributesForScope(schemaAttributes, scope, orgHandle)
@@ -119,7 +124,7 @@ func (psh *ProfileSchemaHandler) AddProfileSchemaAttributesForScope(w http.Respo
 	}
 	schemaAttributesNew := schemaAttributes
 	for i := range schemaAttributesNew {
-		schemaAttributesNew[i].OrgId = ""
+		schemaAttributesNew[i].OrgHandle = ""
 		//todo: See if we need responseObject and covert to that
 	}
 	w.Header().Set("Content-Type", "application/json")

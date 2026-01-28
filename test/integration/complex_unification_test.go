@@ -48,29 +48,29 @@ func Test_Complex_Unification_Scenarios(t *testing.T) {
 	profileSchemaSvc := schemaService.GetProfileSchemaService()
 
 	identityAttr := []schemaModel.ProfileSchemaAttribute{
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.email",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.phone_number",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.phone_number",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.user_id",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.user_id",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.secondary_email",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "identity_attributes.secondary_email",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true},
 	}
 
 	traits := []schemaModel.ProfileSchemaAttribute{
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.interests",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.interests",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.preferences",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.preferences",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.score",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "traits.score",
 			ValueType: constants.IntegerDataType, MergeStrategy: "overwrite", Mutability: constants.MutabilityReadWrite},
 	}
 
 	appData := []schemaModel.ProfileSchemaAttribute{
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "application_data.device_id",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "application_data.device_id",
 			ValueType: constants.StringDataType, MergeStrategy: "combine", Mutability: constants.MutabilityReadWrite, MultiValued: true, ApplicationIdentifier: AppId},
-		{OrgId: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "application_data.session_count",
+		{OrgHandle: SuperTenantOrg, AttributeId: uuid.New().String(), AttributeName: "application_data.session_count",
 			ValueType: constants.IntegerDataType, MergeStrategy: "overwrite", Mutability: constants.MutabilityReadWrite, ApplicationIdentifier: AppId},
 	}
 

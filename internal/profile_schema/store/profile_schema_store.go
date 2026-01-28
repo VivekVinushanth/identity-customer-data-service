@@ -89,7 +89,7 @@ func AddProfileSchemaAttributesForScope(attrs []model.ProfileSchemaAttribute, sc
 	query := baseQuery + strings.Join(valueStrings, ", ")
 	_, err = dbClient.ExecuteQuery(query, valueArgs...)
 	if err != nil {
-		errorMsg := fmt.Sprintf("Failed to insert profile schema attributes for org: %s", attrs[0].OrgId)
+		errorMsg := fmt.Sprintf("Failed to insert profile schema attributes for org: %s", attrs[0].OrgHandle)
 		logger.Debug(errorMsg, log.Error(err))
 		return errors.NewServerError(errors.ErrorMessage{
 			Code:        errors.ADD_PROFILE_SCHEMA.Code,
@@ -98,7 +98,7 @@ func AddProfileSchemaAttributesForScope(attrs []model.ProfileSchemaAttribute, sc
 		}, err)
 	}
 	logger.Info(fmt.Sprintf("Successfully added %d profile schema attributes for organization: %s",
-		len(attrs), attrs[0].OrgId))
+		len(attrs), attrs[0].OrgHandle))
 	return nil
 }
 
@@ -257,7 +257,7 @@ func GetProfileSchemaAttributeByName(orgId, attributeName string) (*model.Profil
 	}
 
 	attr := &model.ProfileSchemaAttribute{
-		OrgId:                 orgId,
+		OrgHandle:             orgId,
 		AttributeName:         row["attribute_name"].(string),
 		AttributeId:           row["attribute_id"].(string),
 		ValueType:             row["value_type"].(string),

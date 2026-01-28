@@ -56,13 +56,12 @@ func (h *AdminConfigHandler) GetAdminConfig(w http.ResponseWriter, r *http.Reque
 	}
 
 	resp := model.AdminConfigAPI{
-		CDSEnabled:            config.CDSEnabled,
-		InitialSchemaSyncDone: config.InitialSchemaSyncDone,
+		CDSEnabled: config.CDSEnabled,
 	}
 	writeJSONResponse(w, http.StatusOK, resp)
 }
 
-// UpdateAdminConfig handles PUT /admin/configs
+// UpdateAdminConfig handles PATCH /admin/configs
 func (h *AdminConfigHandler) UpdateAdminConfig(w http.ResponseWriter, r *http.Request) {
 
 	if err := security.AuthnAndAuthz(r, "admin_config:update"); err != nil {

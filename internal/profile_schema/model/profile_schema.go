@@ -19,7 +19,7 @@
 package model
 
 type ProfileSchemaAttribute struct {
-	OrgId                 string           `json:"org_id,omitempty" bson:"org_id,omitempty"`
+	OrgHandle             string           `json:"org_id,omitempty" bson:"org_id,omitempty"`
 	AttributeId           string           `json:"attribute_id" bson:"attribute_id"`
 	AttributeName         string           `json:"attribute_name" bson:"attribute_name" binding:"required"`
 	ValueType             string           `json:"value_type" bson:"value_type" binding:"required"`

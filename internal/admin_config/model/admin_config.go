@@ -25,8 +25,7 @@ type AdminConfig struct {
 }
 
 type AdminConfigAPI struct {
-	CDSEnabled            bool `json:"cds_enabled" bson:"cds_enabled"`
-	InitialSchemaSyncDone bool `json:"initial_schema_sync_done" bson:"initial_schema_sync_done"`
+	CDSEnabled bool `json:"cds_enabled" bson:"cds_enabled"`
 }
 
 type AdminConfigUpdateAPI struct {
