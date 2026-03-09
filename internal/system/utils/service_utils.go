@@ -18,8 +18,17 @@
 
 package utils
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/wso2/identity-customer-data-service/internal/system/config"
+)
 
 func BuildProfileLocation(orgId, profileId string) string {
-	return fmt.Sprintf("%s/cds/api/v1/profiles/%s", orgId, profileId)
+	cfg := config.GetCDSRuntime().Config.Addr
+	host := cfg.Host
+	if cfg.Port != 0 {
+		host = fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	}
+	return fmt.Sprintf("https://%s/t/%s/cds/api/v1/profiles/%s", host, orgId, profileId)
 }
