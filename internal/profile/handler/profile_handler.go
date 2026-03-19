@@ -617,7 +617,7 @@ func setProfileCookie(w http.ResponseWriter, cookieId string, r *http.Request) e
 		Domain:   resolveDomain(),
 		HttpOnly: true,
 		Secure:   !strings.HasPrefix(r.Host, "localhost"),
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteNoneMode,
 	}
 	http.SetCookie(w, cookie)
 	return nil
