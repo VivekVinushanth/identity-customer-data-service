@@ -2,18 +2,19 @@
  * Copyright (c) 2025-2026, WSO2 LLC. (http://www.wso2.com).
  *
  * WSO2 LLC. licenses this file to you under the Apache License,
- * Version 2.0 (the "License"); you may not use this file except
- * in compliance with the License.
+ * Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
  *     http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing,
  * software distributed under the License is distributed on an
- * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
- * KIND, either express or implied.  See the License for the
- * specific language governing permissions and limitations
- * under the License.
+ * "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+ * either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package workers
@@ -429,59 +430,16 @@ func filterActiveRulesAndSortByPriority(rules []model.UnificationRule) []model.U
 	return activeRules
 }
 
-// MergeProfiles merges two profiles based on schema rules
+// MergeProfiles merges two profiles based on schema rules and returns the merged profile.
 func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profileModel.Profile, schemaRules []schemaModel.ProfileSchemaAttribute) profileModel.Profile {
-
 	logger := log.GetLogger()
 	logger.Info("Merging profiles, " + existingProfile.ProfileId + " and " + incomingProfile.ProfileId)
+
 	merged := existingProfile
+	ruleMap := buildSchemaRuleMap(schemaRules)
 
-	for _, rule := range schemaRules {
-		traitPath := strings.Split(rule.AttributeName, ".")
-		if len(traitPath) < 2 {
-			continue
-		}
-		traitNamespace := traitPath[0]
-		propertyName := traitPath[1]
-
-		var existingVal, newVal interface{}
-		switch traitNamespace {
-		case "traits":
-			if existingProfile.Traits != nil {
-				existingVal = existingProfile.Traits[propertyName]
-			}
-			if incomingProfile.Traits != nil {
-				newVal = incomingProfile.Traits[propertyName]
-			}
-		case "identity_attributes":
-			if existingProfile.IdentityAttributes != nil {
-				existingVal = existingProfile.IdentityAttributes[propertyName]
-			}
-			if incomingProfile.IdentityAttributes != nil {
-				newVal = incomingProfile.IdentityAttributes[propertyName]
-			}
-		}
-
-		mergedVal := MergeTraitValue(existingVal, newVal, rule.MergeStrategy, rule.ValueType, rule.MultiValued)
-
-		if mergedVal == nil || mergedVal == "" {
-			continue
-		}
-
-		switch traitNamespace {
-		case "traits":
-			if merged.Traits == nil {
-				merged.Traits = map[string]interface{}{}
-			}
-			merged.Traits[propertyName] = mergedVal
-		case "identity_attributes":
-			if merged.IdentityAttributes == nil {
-				merged.IdentityAttributes = map[string]interface{}{}
-			}
-			merged.IdentityAttributes[propertyName] = mergedVal
-		}
-	}
-
+	merged.Traits = mergeNamespaceMap(existingProfile.Traits, incomingProfile.Traits, "traits", ruleMap)
+	merged.IdentityAttributes = mergeNamespaceMap(existingProfile.IdentityAttributes, incomingProfile.IdentityAttributes, "identity_attributes", ruleMap)
 	merged.ApplicationData = mergeAppData(existingProfile.ApplicationData, incomingProfile.ApplicationData, schemaRules)
 
 	if incomingProfile.UserId != "" {
@@ -496,6 +454,69 @@ func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profile
 	merged.UpdatedAt = time.Now().UTC()
 
 	return merged
+}
+
+func buildSchemaRuleMap(rules []schemaModel.ProfileSchemaAttribute) map[string]schemaModel.ProfileSchemaAttribute {
+	ruleMap := make(map[string]schemaModel.ProfileSchemaAttribute, len(rules))
+	for _, rule := range rules {
+		ruleMap[rule.AttributeName] = rule
+	}
+	return ruleMap
+}
+
+func mergeNamespaceMap(existingMap, incomingMap map[string]interface{}, namespace string,
+	ruleMap map[string]schemaModel.ProfileSchemaAttribute) map[string]interface{} {
+
+	if existingMap == nil && incomingMap == nil {
+		return nil
+	}
+
+	result := make(map[string]interface{})
+
+	for k, v := range existingMap {
+		result[k] = v
+	}
+
+	for k, incomingVal := range incomingMap {
+		path := namespace + "." + k
+		existingVal := result[k]
+		result[k] = mergeByPath(existingVal, incomingVal, path, ruleMap)
+	}
+
+	return result
+}
+
+func mergeByPath(existing, incoming interface{}, currentPath string,
+	ruleMap map[string]schemaModel.ProfileSchemaAttribute) interface{} {
+
+	existingMap, okE := toStringKeyedMap(existing)
+	incomingMap, okI := toStringKeyedMap(incoming)
+
+	if okE && okI {
+		result := make(map[string]interface{})
+
+		for k, v := range existingMap {
+			result[k] = v
+		}
+
+		for k, incomingChild := range incomingMap {
+			childPath := currentPath + "." + k
+			existingChild := result[k]
+			result[k] = mergeByPath(existingChild, incomingChild, childPath, ruleMap)
+		}
+
+		return result
+	}
+
+	if rule, ok := ruleMap[currentPath]; ok {
+		return MergeAttributeValue(existing, incoming, rule.MergeStrategy, rule.ValueType, rule.MultiValued)
+	}
+
+	if isEmptyValue(incoming) {
+		return existing
+	}
+
+	return incoming
 }
 
 // doesProfileMatch checks if two profiles have matching attributes based on a unification rule
@@ -574,18 +595,14 @@ func checkForMatch(existingValues, newValues []interface{}) bool {
 	return false
 }
 
-func MergeTraitValue(existing interface{}, incoming interface{}, strategy string, valueType string, multiValued bool) interface{} {
+func MergeAttributeValue(existing interface{}, incoming interface{}, strategy string, valueType string, multiValued bool) interface{} {
 
 	switch strings.ToLower(strategy) {
 	case "overwrite":
-		if incoming == nil {
-			return existing
-		}
-		if incoming == "" {
+		if isEmptyValue(incoming) {
 			return existing
 		}
 		return incoming
-
 	case "ignore":
 		if existing != nil {
 			return existing
@@ -632,15 +649,22 @@ func MergeTraitValue(existing interface{}, incoming interface{}, strategy string
 			return combineUniqueStrings(a, b)
 
 		case "complex":
-			a, okA := existing.([]interface{})
-			b, okB := incoming.([]interface{})
-			if okA && okB {
-				return append(a, b...)
+			a := toInterfaceSlice(existing)
+			b := toInterfaceSlice(incoming)
+
+			if len(a) == 0 && len(b) == 0 {
+				if incoming == nil {
+					return existing
+				}
+				return incoming
 			}
-			if okB {
+			if len(a) == 0 {
 				return b
 			}
-			return incoming
+			if len(b) == 0 {
+				return a
+			}
+			return append(a, b...)
 
 		default:
 			return incoming
@@ -706,6 +730,54 @@ func toStringKeyedMap(v interface{}) (map[string]interface{}, bool) {
 	}
 	m, ok := v.(map[string]interface{})
 	return m, ok
+}
+
+func toInterfaceSlice(value interface{}) []interface{} {
+	switch v := value.(type) {
+	case []interface{}:
+		return v
+	case primitive.A:
+		return []interface{}(v)
+	case []map[string]interface{}:
+		result := make([]interface{}, 0, len(v))
+		for _, item := range v {
+			result = append(result, item)
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+func isEmptyValue(v interface{}) bool {
+	if v == nil {
+		return true
+	}
+
+	switch val := v.(type) {
+	case string:
+		return strings.TrimSpace(val) == ""
+
+	case []interface{}:
+		return len(val) == 0
+
+	case []string:
+		return len(val) == 0
+
+	case []int:
+		return len(val) == 0
+
+	case []float64:
+		return len(val) == 0
+
+	case []bool:
+		return len(val) == 0
+
+	case map[string]interface{}:
+		return len(val) == 0
+	}
+
+	return false
 }
 
 // deepMergeMaps merges overlay into base, keeping keys from both.
@@ -866,7 +938,7 @@ func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationDat
 					}
 				}
 
-				mergedVal := MergeTraitValue(existingVal, newVal, strategy, valueType, multiValued)
+				mergedVal := MergeAttributeValue(existingVal, newVal, strategy, valueType, multiValued)
 				existingApp.AppSpecificData[key] = mergedVal
 			}
 		} else {
