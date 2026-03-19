@@ -72,11 +72,19 @@ func GetProfilesService() ProfilesServiceInterface {
 
 var safeIdentifier = regexp.MustCompile(constants.FilterRegex)
 
-func ConvertAppData(input map[string]map[string]interface{}) []profileModel.ApplicationData {
+func ConvertAppData(input map[string]interface{}) ([]profileModel.ApplicationData, error) {
 
 	appDataList := make([]profileModel.ApplicationData, 0, len(input))
 
-	for appID, data := range input {
+	for appID, val := range input {
+		data, ok := val.(map[string]interface{})
+		if !ok {
+			return nil, errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.UPDATE_PROFILE.Code,
+				Message:     errors2.UPDATE_PROFILE.Message,
+				Description: fmt.Sprintf("application_data entry '%s' must be of object type", appID),
+			}, http.StatusBadRequest)
+		}
 		appSpecific := make(map[string]interface{})
 		for key, value := range data {
 			appSpecific[key] = value
@@ -87,7 +95,16 @@ func ConvertAppData(input map[string]map[string]interface{}) []profileModel.Appl
 		})
 	}
 
-	return appDataList
+	return appDataList, nil
+}
+
+// WideAppDataMap converts map[string]map[string]interface{} to map[string]interface{} for use in ProfileRequest.
+func WideAppDataMap(input map[string]map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{}, len(input))
+	for k, v := range input {
+		result[k] = v
+	}
+	return result
 }
 
 // CreateProfile creates a new profile.
@@ -127,11 +144,15 @@ func (ps *ProfilesService) CreateProfile(profileRequest profileModel.ProfileRequ
 	// convert profile request to model
 	createdTime := time.Now().UTC()
 	profileId := uuid.New().String()
+	appData, err := ConvertAppData(profileRequest.ApplicationData)
+	if err != nil {
+		return nil, err
+	}
 	profile := profileModel.Profile{
 		ProfileId:          profileId,
 		OrgHandle:          orgHandle,
 		UserId:             profileRequest.UserId,
-		ApplicationData:    ConvertAppData(profileRequest.ApplicationData),
+		ApplicationData:    appData,
 		Traits:             profileRequest.Traits,
 		IdentityAttributes: profileRequest.IdentityAttributes,
 		ProfileStatus: &profileModel.ProfileStatus{
@@ -221,7 +242,15 @@ func ValidateProfileAgainstSchema(profile profileModel.ProfileRequest, existingP
 	}
 
 	// Validate application data
-	for appID, attrs := range profile.ApplicationData {
+	for appID, rawAttrs := range profile.ApplicationData {
+		attrs, ok := rawAttrs.(map[string]interface{})
+		if !ok {
+			return errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.UPDATE_PROFILE.Code,
+				Message:     errors2.UPDATE_PROFILE.Message,
+				Description: fmt.Sprintf("application_data entry '%s' must be of object type", appID),
+			}, http.StatusBadRequest)
+		}
 		for key, val := range attrs {
 			if err := rejectIfFlattenedSubAttribute(key, "application_data", schema.ApplicationData[appID]); err != nil {
 				return err
@@ -752,12 +781,16 @@ func (ps *ProfilesService) UpdateProfile(profileId, orgHandle string, updatedPro
 
 	var profileToUpDate profileModel.Profile
 	updatedTime := time.Now().UTC()
+	appData, err := ConvertAppData(updatedProfile.ApplicationData)
+	if err != nil {
+		return nil, err
+	}
 	if profile.ProfileStatus.IsReferenceProfile {
 		// convert profile request to model
 		profileToUpDate = profileModel.Profile{
 			ProfileId:          profileId,
 			UserId:             updatedProfile.UserId,
-			ApplicationData:    ConvertAppData(updatedProfile.ApplicationData),
+			ApplicationData:    appData,
 			Traits:             updatedProfile.Traits,
 			IdentityAttributes: updatedProfile.IdentityAttributes,
 			UpdatedAt:          updatedTime,
@@ -782,7 +815,7 @@ func (ps *ProfilesService) UpdateProfile(profileId, orgHandle string, updatedPro
 		profileToUpDate = profileModel.Profile{
 			ProfileId:          masterProfile.ProfileId,
 			UserId:             updatedProfile.UserId,
-			ApplicationData:    ConvertAppData(updatedProfile.ApplicationData),
+			ApplicationData:    appData,
 			Traits:             updatedProfile.Traits,
 			IdentityAttributes: updatedProfile.IdentityAttributes,
 			UpdatedAt:          updatedTime,
@@ -1389,10 +1422,14 @@ func (ps *ProfilesService) PatchProfile(profileId, orgHandle string, patch map[s
 		}, http.StatusNotFound)
 	}
 
-	// Convert the full profile to map to allow patching
+	// Convert the full profile to map to allow patching.
+	// Marshal the profile but override application_data with the map representation
+	// (the stored format is []ApplicationData — a JSON array — which cannot be unmarshalled
+	// back into ProfileRequest.ApplicationData map[string]interface{}).
 	fullData, _ := json.Marshal(existingProfile)
 	var merged map[string]interface{}
 	_ = json.Unmarshal(fullData, &merged)
+	merged["application_data"] = ConvertAppDataToMap(existingProfile.ApplicationData)
 
 	// Handle deep merge for nested objects first
 	if traitsPatch, ok := patch["traits"].(map[string]interface{}); ok {

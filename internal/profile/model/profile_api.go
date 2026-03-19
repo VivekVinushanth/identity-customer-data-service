@@ -49,10 +49,10 @@ type Meta struct {
 }
 
 type ProfileRequest struct {
-	UserId             string                            `json:"user_id" bson:"user_id"`
-	IdentityAttributes map[string]interface{}            `json:"identity_attributes,omitempty" bson:"identity_attributes,omitempty"`
-	Traits             map[string]interface{}            `json:"traits,omitempty" bson:"traits,omitempty"`
-	ApplicationData    map[string]map[string]interface{} `json:"application_data"`
+	UserId             string                 `json:"user_id" bson:"user_id"`
+	IdentityAttributes map[string]interface{} `json:"identity_attributes,omitempty" bson:"identity_attributes,omitempty"`
+	Traits             map[string]interface{} `json:"traits,omitempty" bson:"traits,omitempty"`
+	ApplicationData    map[string]interface{} `json:"application_data"`
 }
 
 type ProfileSync struct {
