@@ -438,7 +438,7 @@ func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profile
 
 	for _, rule := range schemaRules {
 		traitPath := strings.Split(rule.AttributeName, ".")
-		if len(traitPath) < 2 {
+		if len(traitPath) != 2 {
 			continue
 		}
 		traitNamespace := traitPath[0]
