@@ -594,7 +594,15 @@ func MergeTraitValue(existing interface{}, incoming interface{}, strategy string
 
 	case "combine":
 		if !multiValued {
-			log.GetLogger().Warn("Merge strategy 'combine' is used for a non-multi-valued field. ")
+			// For non-multiValued complex fields (e.g. product_interests map), deep-merge the maps.
+			existingMap, okE := toStringKeyedMap(existing)
+			incomingMap, okI := toStringKeyedMap(incoming)
+			if okE && okI {
+				return deepMergeMaps(existingMap, incomingMap)
+			}
+			if incoming == nil {
+				return existing
+			}
 			return incoming
 		}
 		switch strings.ToLower(valueType) {
@@ -623,11 +631,14 @@ func MergeTraitValue(existing interface{}, incoming interface{}, strategy string
 			b := toStringSlice(incoming)
 			return combineUniqueStrings(a, b)
 
-		case "object":
+		case "object", "complex":
 			a, okA := existing.([]interface{})
 			b, okB := incoming.([]interface{})
 			if okA && okB {
 				return append(a, b...)
+			}
+			if okB {
+				return b
 			}
 			return incoming
 
@@ -687,6 +698,33 @@ func toIntSlice(value interface{}) []int {
 	default:
 		return []int{}
 	}
+}
+
+func toStringKeyedMap(v interface{}) (map[string]interface{}, bool) {
+	if v == nil {
+		return nil, false
+	}
+	m, ok := v.(map[string]interface{})
+	return m, ok
+}
+
+func deepMergeMaps(base, overlay map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{}, len(base))
+	for k, v := range base {
+		result[k] = v
+	}
+	for k, v := range overlay {
+		if baseVal, exists := result[k]; exists {
+			baseMap, okB := toStringKeyedMap(baseVal)
+			overlayMap, okO := toStringKeyedMap(v)
+			if okB && okO {
+				result[k] = deepMergeMaps(baseMap, overlayMap)
+				continue
+			}
+		}
+		result[k] = v
+	}
+	return result
 }
 
 func combineUniqueStrings(a, b []string) []string {
