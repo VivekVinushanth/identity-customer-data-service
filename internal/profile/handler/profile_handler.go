@@ -944,7 +944,7 @@ func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.
 					UserId:             profileSync.UserId,
 					IdentityAttributes: existingProfile.IdentityAttributes,
 					Traits:             existingProfile.Traits,
-					ApplicationData:    existingProfile.ApplicationData,
+					ApplicationData:    profileService.WideAppDataMap(existingProfile.ApplicationData),
 				}
 
 				// Save updated profile
@@ -1049,7 +1049,7 @@ func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.
 					UserId:             existingProfile.UserId,
 					IdentityAttributes: existingProfile.IdentityAttributes,
 					Traits:             existingProfile.Traits,
-					ApplicationData:    existingProfile.ApplicationData,
+					ApplicationData:    profileService.WideAppDataMap(existingProfile.ApplicationData),
 				}
 
 				// Save updated profile
@@ -1123,7 +1123,7 @@ func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.
 						UserId:             profileSync.UserId,
 						IdentityAttributes: anonymousProfile.IdentityAttributes,
 						Traits:             anonymousProfile.Traits,
-						ApplicationData:    anonymousProfile.ApplicationData,
+						ApplicationData:    profileService.WideAppDataMap(anonymousProfile.ApplicationData),
 					}
 					_, err = profilesService.UpdateProfile(anonymousProfile.ProfileId, orgHandle, profileRequest)
 					if err != nil {
@@ -1145,7 +1145,7 @@ func (ph *ProfileHandler) SyncProfile(writer http.ResponseWriter, request *http.
 					UserId:             profileSync.UserId,
 					IdentityAttributes: anonymousProfile.IdentityAttributes,
 					Traits:             anonymousProfile.Traits,
-					ApplicationData:    anonymousProfile.ApplicationData,
+					ApplicationData:    profileService.WideAppDataMap(anonymousProfile.ApplicationData),
 				}
 
 				_, err = profilesService.UpdateProfile(anonymousProfile.ProfileId, orgHandle, profileRequest)
