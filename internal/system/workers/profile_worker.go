@@ -440,7 +440,7 @@ func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profile
 
 	merged.Traits = mergeNamespaceMap(existingProfile.Traits, incomingProfile.Traits, "traits", ruleMap)
 	merged.IdentityAttributes = mergeNamespaceMap(existingProfile.IdentityAttributes, incomingProfile.IdentityAttributes, "identity_attributes", ruleMap)
-	merged.ApplicationData = mergeAppData(existingProfile.ApplicationData, incomingProfile.ApplicationData, schemaRules)
+	merged.ApplicationData = mergeAppData(existingProfile.ApplicationData, incomingProfile.ApplicationData, ruleMap)
 
 	if incomingProfile.UserId != "" {
 		merged.UserId = incomingProfile.UserId
@@ -489,6 +489,31 @@ func mergeNamespaceMap(existingMap, incomingMap map[string]interface{}, namespac
 func mergeByPath(existing, incoming interface{}, currentPath string,
 	ruleMap map[string]schemaModel.ProfileSchemaAttribute) interface{} {
 
+	if rule, ok := ruleMap[currentPath]; ok {
+		if strings.EqualFold(rule.ValueType, constants.ComplexDataType) && !rule.MultiValued {
+			existingMap, okE := toStringKeyedMap(existing)
+			incomingMap, okI := toStringKeyedMap(incoming)
+
+			if okE && okI {
+				result := make(map[string]interface{})
+
+				for k, v := range existingMap {
+					result[k] = v
+				}
+
+				for k, incomingChild := range incomingMap {
+					childPath := currentPath + "." + k
+					existingChild := result[k]
+					result[k] = mergeByPath(existingChild, incomingChild, childPath, ruleMap)
+				}
+
+				return result
+			}
+		}
+
+		return MergeAttributeValue(existing, incoming, rule.MergeStrategy, rule.ValueType, rule.MultiValued)
+	}
+
 	existingMap, okE := toStringKeyedMap(existing)
 	incomingMap, okI := toStringKeyedMap(incoming)
 
@@ -506,10 +531,6 @@ func mergeByPath(existing, incoming interface{}, currentPath string,
 		}
 
 		return result
-	}
-
-	if rule, ok := ruleMap[currentPath]; ok {
-		return MergeAttributeValue(existing, incoming, rule.MergeStrategy, rule.ValueType, rule.MultiValued)
 	}
 
 	if isEmptyValue(incoming) {
@@ -900,7 +921,8 @@ func combineUniqueBools(a, b []bool) []bool {
 	return combined
 }
 
-func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationData, rules []schemaModel.ProfileSchemaAttribute) []profileModel.ApplicationData {
+func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationData,
+	ruleMap map[string]schemaModel.ProfileSchemaAttribute) []profileModel.ApplicationData {
 
 	logger := log.GetLogger()
 	mergedMap := make(map[string]profileModel.ApplicationData)
@@ -918,32 +940,12 @@ func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationDat
 			continue
 		}
 
-		if existingApp.AppSpecificData == nil {
-			existingApp.AppSpecificData = map[string]interface{}{}
-		}
-		if newApp.AppSpecificData != nil {
-			for key, newVal := range newApp.AppSpecificData {
-				existingVal := existingApp.AppSpecificData[key]
-
-				strategy := ""
-				valueType := ""
-				multiValued := false
-
-				for _, r := range rules {
-					if r.AttributeName == fmt.Sprintf("application_data.%s", key) {
-						strategy = r.MergeStrategy
-						valueType = r.ValueType
-						multiValued = r.MultiValued
-						break
-					}
-				}
-
-				mergedVal := MergeAttributeValue(existingVal, newVal, strategy, valueType, multiValued)
-				existingApp.AppSpecificData[key] = mergedVal
-			}
-		} else {
-			logger.Warn(fmt.Sprintf("No app-specific data for application: %s", newApp.AppId))
-		}
+		existingApp.AppSpecificData = mergeNamespaceMap(
+			existingApp.AppSpecificData,
+			newApp.AppSpecificData,
+			"application_data",
+			ruleMap,
+		)
 
 		mergedMap[newApp.AppId] = existingApp
 	}
