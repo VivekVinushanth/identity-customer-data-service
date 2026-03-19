@@ -436,10 +436,11 @@ func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profile
 
 	merged := existingProfile
 	ruleMap := buildSchemaRuleMap(schemaRules)
+	appRuleMap := buildApplicationSchemaRuleMap(schemaRules)
 
 	merged.Traits = mergeNamespaceMap(existingProfile.Traits, incomingProfile.Traits, "traits", ruleMap)
 	merged.IdentityAttributes = mergeNamespaceMap(existingProfile.IdentityAttributes, incomingProfile.IdentityAttributes, "identity_attributes", ruleMap)
-	merged.ApplicationData = mergeAppData(existingProfile.ApplicationData, incomingProfile.ApplicationData, ruleMap)
+	merged.ApplicationData = mergeAppData(existingProfile.ApplicationData, incomingProfile.ApplicationData, appRuleMap)
 
 	if incomingProfile.UserId != "" {
 		merged.UserId = incomingProfile.UserId
@@ -921,7 +922,7 @@ func combineUniqueBools(a, b []bool) []bool {
 }
 
 func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationData,
-	ruleMap map[string]schemaModel.ProfileSchemaAttribute) []profileModel.ApplicationData {
+	appRuleMap map[string]map[string]schemaModel.ProfileSchemaAttribute) []profileModel.ApplicationData {
 
 	logger := log.GetLogger()
 	mergedMap := make(map[string]profileModel.ApplicationData)
@@ -939,11 +940,12 @@ func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationDat
 			continue
 		}
 
+		appRules := appRuleMap[newApp.AppId]
 		existingApp.AppSpecificData = mergeNamespaceMap(
 			existingApp.AppSpecificData,
 			newApp.AppSpecificData,
 			"application_data",
-			ruleMap,
+			appRules,
 		)
 
 		mergedMap[newApp.AppId] = existingApp
@@ -957,4 +959,24 @@ func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationDat
 
 	logger.Info(fmt.Sprintf("Application data merge completed for %d applications", len(mergedList)))
 	return mergedList
+}
+
+func buildApplicationSchemaRuleMap(rules []schemaModel.ProfileSchemaAttribute) map[string]map[string]schemaModel.ProfileSchemaAttribute {
+	result := make(map[string]map[string]schemaModel.ProfileSchemaAttribute)
+
+	for _, rule := range rules {
+		if !strings.HasPrefix(rule.AttributeName, "application_data.") {
+			continue
+		}
+		appID := rule.ApplicationIdentifier
+		if appID == "" {
+			continue
+		}
+		if result[appID] == nil {
+			result[appID] = make(map[string]schemaModel.ProfileSchemaAttribute)
+		}
+		result[appID][rule.AttributeName] = rule
+	}
+
+	return result
 }
