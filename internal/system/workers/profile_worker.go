@@ -438,7 +438,20 @@ func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profile
 
 	for _, rule := range schemaRules {
 		traitPath := strings.Split(rule.AttributeName, ".")
-		if len(traitPath) < 2 {
+		if len(traitPath) != 2 {
+			// Skip sub-attribute rules (3+ path segments, e.g. "traits.product_interests.api-platform").
+			// MergeProfiles operates at the top-level field (traitPath[1]), so applying a sub-attribute
+			// rule here would incorrectly target the entire parent field with the sub-attribute's strategy,
+			// clobbering data already merged by the parent-level rule.
+			//
+			// NOTE: This assumes all sub-attribute rules use "overwrite". The parent-level "combine" rule
+			// handles nested maps via deepMergeMaps (overlay-wins for leaf values), which is equivalent.
+			// If a sub-attribute rule uses "combine" (e.g. a multi-valued array nested inside a complex
+			// field), it will be silently ignored and deepMergeMaps will apply overlay-wins instead,
+			// potentially losing existing array entries.
+			//
+			// TODO: Refactor MergeProfiles to recurse into nested objects level-by-level, applying
+			// schema rules at each depth, so that sub-attribute "combine" strategies are honoured.
 			continue
 		}
 		traitNamespace := traitPath[0]
