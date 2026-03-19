@@ -462,7 +462,7 @@ func MergeProfiles(existingProfile profileModel.Profile, incomingProfile profile
 			}
 		}
 
-		mergedVal := MergeTraitValue(existingVal, newVal, rule.MergeStrategy, rule.ValueType, rule.MultiValued)
+		mergedVal := MergeTraitValue(existingVal, newVal, rule.MergeStrategy, rule.ValueType, rule.MultiValued, schemaRules, rule.AttributeName, "")
 
 		if mergedVal == nil || mergedVal == "" {
 			continue
@@ -574,7 +574,7 @@ func checkForMatch(existingValues, newValues []interface{}) bool {
 	return false
 }
 
-func MergeTraitValue(existing interface{}, incoming interface{}, strategy string, valueType string, multiValued bool) interface{} {
+func MergeTraitValue(existing interface{}, incoming interface{}, strategy string, valueType string, multiValued bool, rules []schemaModel.ProfileSchemaAttribute, currentPath string, appId string) interface{} {
 
 	switch strings.ToLower(strategy) {
 	case "overwrite":
@@ -594,11 +594,12 @@ func MergeTraitValue(existing interface{}, incoming interface{}, strategy string
 
 	case "combine":
 		if !multiValued {
-			// For non-multiValued complex fields (e.g. product_interests map), deep-merge the maps.
+			// For non-multiValued complex fields (e.g. product_interests map), deep-merge the maps
+			// using sub-attribute schema rules to govern each shared key.
 			existingMap, okE := toStringKeyedMap(existing)
 			incomingMap, okI := toStringKeyedMap(incoming)
 			if okE && okI {
-				return deepMergeMaps(existingMap, incomingMap)
+				return deepMergeMaps(existingMap, incomingMap, rules, currentPath, appId)
 			}
 			if incoming == nil {
 				return existing
@@ -709,28 +710,42 @@ func toStringKeyedMap(v interface{}) (map[string]interface{}, bool) {
 }
 
 // deepMergeMaps merges overlay into base, keeping keys from both.
-// When the same key exists in both maps:
-//   - nested maps are recursed into
-//   - leaf values: overlay wins (equivalent to overwrite strategy)
-//
-// This is intentional: a complex parent with strategy=combine means
-// "keep keys from both containers". Within each shared key, sub-attribute
-// strategies are expected to be "overwrite" (the common case in this schema).
-// If a sub-attribute ever needs strategy=combine, this function should be
-// made schema-aware, accepting the rule set and current attribute path.
-func deepMergeMaps(base, overlay map[string]interface{}) map[string]interface{} {
+// For each key present in both maps, the sub-attribute schema rule at
+// currentPath.key is looked up and applied via MergeTraitValue. If no rule
+// is found the overlay value wins (overwrite default).
+// appId is non-empty only for application_data fields; it is used to filter
+// rules to the correct application.
+func deepMergeMaps(base, overlay map[string]interface{}, rules []schemaModel.ProfileSchemaAttribute, currentPath string, appId string) map[string]interface{} {
 	result := make(map[string]interface{}, len(base))
 	for k, v := range base {
 		result[k] = v
 	}
 	for k, v := range overlay {
 		if baseVal, exists := result[k]; exists {
-			baseMap, okB := toStringKeyedMap(baseVal)
-			overlayMap, okO := toStringKeyedMap(v)
-			if okB && okO {
-				result[k] = deepMergeMaps(baseMap, overlayMap)
-				continue
+			subPath := currentPath + "." + k
+			// Look up the sub-attribute rule for this key
+			var subRule *schemaModel.ProfileSchemaAttribute
+			for i, r := range rules {
+				if r.AttributeName == subPath {
+					if appId == "" || r.ApplicationIdentifier == appId {
+						subRule = &rules[i]
+						break
+					}
+				}
 			}
+			if subRule != nil {
+				result[k] = MergeTraitValue(baseVal, v, subRule.MergeStrategy, subRule.ValueType, subRule.MultiValued, rules, subPath, appId)
+			} else {
+				// No rule found: recurse into nested maps, otherwise overlay wins
+				baseMap, okB := toStringKeyedMap(baseVal)
+				overlayMap, okO := toStringKeyedMap(v)
+				if okB && okO {
+					result[k] = deepMergeMaps(baseMap, overlayMap, rules, subPath, appId)
+				} else {
+					result[k] = v
+				}
+			}
+			continue
 		}
 		result[k] = v
 	}
@@ -856,9 +871,10 @@ func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationDat
 				strategy := ""
 				valueType := ""
 				multiValued := false
+				attrPath := fmt.Sprintf("application_data.%s", key)
 
 				for _, r := range rules {
-					if r.AttributeName == fmt.Sprintf("application_data.%s", key) {
+					if r.AttributeName == attrPath && r.ApplicationIdentifier == existingApp.AppId {
 						strategy = r.MergeStrategy
 						valueType = r.ValueType
 						multiValued = r.MultiValued
@@ -866,7 +882,7 @@ func mergeAppData(existingAppData, incomingAppData []profileModel.ApplicationDat
 					}
 				}
 
-				mergedVal := MergeTraitValue(existingVal, newVal, strategy, valueType, multiValued)
+				mergedVal := MergeTraitValue(existingVal, newVal, strategy, valueType, multiValued, rules, attrPath, existingApp.AppId)
 				existingApp.AppSpecificData[key] = mergedVal
 			}
 		} else {
