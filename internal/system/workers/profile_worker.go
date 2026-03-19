@@ -631,7 +631,7 @@ func MergeTraitValue(existing interface{}, incoming interface{}, strategy string
 			b := toStringSlice(incoming)
 			return combineUniqueStrings(a, b)
 
-		case "object", "complex":
+		case "complex":
 			a, okA := existing.([]interface{})
 			b, okB := incoming.([]interface{})
 			if okA && okB {
@@ -708,6 +708,16 @@ func toStringKeyedMap(v interface{}) (map[string]interface{}, bool) {
 	return m, ok
 }
 
+// deepMergeMaps merges overlay into base, keeping keys from both.
+// When the same key exists in both maps:
+//   - nested maps are recursed into
+//   - leaf values: overlay wins (equivalent to overwrite strategy)
+//
+// This is intentional: a complex parent with strategy=combine means
+// "keep keys from both containers". Within each shared key, sub-attribute
+// strategies are expected to be "overwrite" (the common case in this schema).
+// If a sub-attribute ever needs strategy=combine, this function should be
+// made schema-aware, accepting the rule set and current attribute path.
 func deepMergeMaps(base, overlay map[string]interface{}) map[string]interface{} {
 	result := make(map[string]interface{}, len(base))
 	for k, v := range base {
