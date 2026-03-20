@@ -1422,14 +1422,33 @@ func (ps *ProfilesService) PatchProfile(profileId, orgHandle string, patch map[s
 		}, http.StatusNotFound)
 	}
 
+	// For a child profile (merged into a master), the patch must be applied to the
+	// master's current data. Using the child's raw stored document as the base would
+	// cause UpdateProfile to overwrite the master with incomplete data, losing all
+	// accumulated merged data that only exists on the master.
+	profileForBase := existingProfile
+	if existingProfile.ProfileStatus != nil && !existingProfile.ProfileStatus.IsReferenceProfile && existingProfile.ProfileStatus.ReferenceProfileId != "" {
+		masterProfile, err := profileStore.GetProfile(existingProfile.ProfileStatus.ReferenceProfileId)
+		if err != nil {
+			return nil, err
+		}
+		if masterProfile != nil {
+			masterProfile.ApplicationData, err = profileStore.FetchApplicationData(masterProfile.ProfileId)
+			if err != nil {
+				return nil, err
+			}
+			profileForBase = masterProfile
+		}
+	}
+
 	// Convert the full profile to map to allow patching.
 	// Marshal the profile but override application_data with the map representation
 	// (the stored format is []ApplicationData — a JSON array — which cannot be unmarshalled
 	// back into ProfileRequest.ApplicationData map[string]interface{}).
-	fullData, _ := json.Marshal(existingProfile)
+	fullData, _ := json.Marshal(profileForBase)
 	var merged map[string]interface{}
 	_ = json.Unmarshal(fullData, &merged)
-	merged["application_data"] = ConvertAppDataToMap(existingProfile.ApplicationData)
+	merged["application_data"] = ConvertAppDataToMap(profileForBase.ApplicationData)
 
 	// Handle deep merge for nested objects first
 	if traitsPatch, ok := patch["traits"].(map[string]interface{}); ok {
