@@ -1438,6 +1438,10 @@ func (ps *ProfilesService) PatchProfile(profileId, orgHandle string, patch map[s
 				return nil, err
 			}
 			profileForBase = masterProfile
+		} else {
+			logger := log.GetLogger()
+			logger.Warn(fmt.Sprintf("Master profile %s not found for child profile %s. Using the child profile",
+				existingProfile.ProfileStatus.ReferenceProfileId, profileId))
 		}
 	}
 
