@@ -137,6 +137,30 @@ func (cs *ConsentCategoryService) validateConsentCat(category model.ConsentCateg
 			Description: "Invalid purpose provided. Allowed values are profiling, personalization, destination.",
 		}, http.StatusBadRequest), false
 	}
+
+	for _, attr := range category.Attributes {
+		if !constants.AllowedConsentAttributeScopes[attr.Scope] {
+			return errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+				Description: fmt.Sprintf("Invalid attribute scope: %s. Allowed values are identityAttributes, traits, applicationData.", attr.Scope),
+			}, http.StatusBadRequest), false
+		}
+		if attr.AttributeId == "" {
+			return errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+				Description: "attribute_id is required for each attribute.",
+			}, http.StatusBadRequest), false
+		}
+		if attr.Scope == constants.ScopeApplicationData && attr.AppId == "" {
+			return errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+				Description: "app_id is required for applicationData scope attributes.",
+			}, http.StatusBadRequest), false
+		}
+	}
 	return nil, true
 }
 

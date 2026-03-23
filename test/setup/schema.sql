@@ -92,6 +92,16 @@ CREATE TABLE consent_categories
     destinations        TEXT[]
 );
 
+CREATE TABLE consent_category_attributes
+(
+    id           SERIAL PRIMARY KEY,
+    category_id  VARCHAR(255) REFERENCES consent_categories (category_identifier) ON DELETE CASCADE,
+    scope        VARCHAR(50)  NOT NULL,
+    attribute_id VARCHAR(255) NOT NULL,
+    app_id       VARCHAR(255) NOT NULL DEFAULT '',
+    UNIQUE (category_id, scope, attribute_id, app_id)
+);
+
 CREATE TABLE profile_consents
 (
     id      SERIAL PRIMARY KEY,

@@ -6,6 +6,7 @@
 |---|---|
 | [Profiles](concepts/profiles.md) | What a profile is, temporary vs permanent, lifecycle, cookies |
 | [Profile Schema](concepts/profile-schema.md) | Attribute types, mutability, merge strategies, core schema |
+| [Consent](concepts/consent.md) | Consent categories, attribute scopes, consent-filtered profile fetch |
 | [Unification Rules](concepts/unification-rules.md) | Rule structure, priority, how matching works |
 | [How Unification Works](concepts/how-unification-works.md) | The full merge pipeline — userId match, rule evaluation, merge cases, data merging |
 

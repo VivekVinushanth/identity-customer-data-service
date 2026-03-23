@@ -148,6 +148,18 @@ var AllowedConsentPurposes = map[string]bool{
 	"destination":     true,
 }
 
+const (
+	ScopeIdentityAttributes = "identityAttributes"
+	ScopeTraits             = "traits"
+	ScopeApplicationData    = "applicationData"
+)
+
+var AllowedConsentAttributeScopes = map[string]bool{
+	ScopeIdentityAttributes: true,
+	ScopeTraits:             true,
+	ScopeApplicationData:    true,
+}
+
 // Merge usecases
 const (
 	TempProfile_TempProfile_Merge = "TEMP_TEMP"

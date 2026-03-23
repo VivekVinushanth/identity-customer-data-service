@@ -104,6 +104,16 @@ func (ph *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		filterParams,
 	)
 
+	consentIds := r.URL.Query()["consentId"]
+	if len(consentIds) > 0 {
+		filtered, filterErr := profileService.FilterProfileByConsent(*profile, profileId, consentIds)
+		if filterErr != nil {
+			utils.HandleError(w, filterErr)
+			return
+		}
+		profile = &filtered
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(profile)

@@ -330,6 +330,21 @@ var DeleteConsentCategory = map[string]string{
 	"postgres": `DELETE FROM consent_categories WHERE category_identifier=$1`,
 }
 
+var InsertConsentCategoryAttribute = map[string]string{
+	"postgres": `INSERT INTO consent_category_attributes (category_id, scope, attribute_id, app_id)
+				VALUES ($1, $2, $3, $4)
+				ON CONFLICT (category_id, scope, attribute_id, app_id) DO NOTHING`,
+}
+
+var GetConsentCategoryAttributesByCategoryId = map[string]string{
+	"postgres": `SELECT scope, attribute_id, app_id FROM consent_category_attributes WHERE category_id = $1`,
+}
+
+
+var DeleteConsentCategoryAttributesByCategoryId = map[string]string{
+	"postgres": `DELETE FROM consent_category_attributes WHERE category_id = $1`,
+}
+
 var InsertCookie = map[string]string{
 	"postgres": `INSERT INTO profile_cookies (cookie_id, profile_id, is_active) VALUES ($1, $2, $3)`,
 }
