@@ -89,7 +89,8 @@ CREATE TABLE consent_categories
     category_name       VARCHAR(255)        NOT NULL,
     category_identifier VARCHAR(255) UNIQUE NOT NULL,
     purpose             VARCHAR(255)        NOT NULL,
-    destinations        TEXT[]
+    destinations        TEXT[],
+    is_mandatory        BOOLEAN             NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE consent_category_attributes

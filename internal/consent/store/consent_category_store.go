@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"github.com/lib/pq"
 	model "github.com/wso2/identity-customer-data-service/internal/consent/model"
+	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/provider"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/scripts"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
@@ -55,7 +56,7 @@ func AddConsentCategory(category model.ConsentCategory) error {
 		}, err)
 		return serverError
 	}
-	_, err = tx.Exec(query, category.CategoryName, category.CategoryIdentifier, category.OrgHandle, category.Purpose, pq.Array(category.Destinations))
+	_, err = tx.Exec(query, category.CategoryName, category.CategoryIdentifier, category.OrgHandle, category.Purpose, pq.Array(category.Destinations), category.IsMandatory)
 	if err != nil {
 		errRollback := tx.Rollback()
 		if errRollback != nil {
@@ -134,6 +135,7 @@ func GetAllConsentCategories() ([]model.ConsentCategory, error) {
 			OrgHandle:          row["org_handle"].(string),
 			Purpose:            row["purpose"].(string),
 			Destinations:       parseStringArray(row["destinations"]),
+			IsMandatory:        parseBool(row["is_mandatory"]),
 		})
 		categoryIds = append(categoryIds, id)
 	}
@@ -193,6 +195,7 @@ func GetConsentCategoryByID(id string) (*model.ConsentCategory, error) {
 		OrgHandle:          row["org_handle"].(string),
 		Purpose:            row["purpose"].(string),
 		Destinations:       parseStringArray(row["destinations"]),
+		IsMandatory:        parseBool(row["is_mandatory"]),
 	}
 
 	attrsByCategory, err := getAttributesByCategoryIds(dbClient, []string{id})
@@ -243,6 +246,7 @@ func GetConsentCategoryByName(name string) (*model.ConsentCategory, error) {
 		OrgHandle:          row["org_handle"].(string),
 		Purpose:            row["purpose"].(string),
 		Destinations:       parseStringArray(row["destinations"]),
+		IsMandatory:        parseBool(row["is_mandatory"]),
 	}
 	return &category, nil
 }
@@ -359,9 +363,117 @@ func DeleteConsentCategory(categoryId string) error {
 	return tx.Commit()
 }
 
+// SeedDefaultIdentityDataCategory creates the mandatory "Identity Data" consent category for the org
+// and populates it with all identity attributes from the profile schema. Idempotent.
+func SeedDefaultIdentityDataCategory(orgHandle string) error {
+	dbClient, err := provider.NewDBProvider().GetDBClient()
+	logger := log.GetLogger()
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to get db client for seeding identity data category for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.ADD_CONSENT_CATEGORY.Code,
+			Message:     errors2.ADD_CONSENT_CATEGORY.Message,
+			Description: errorMsg,
+		}, err)
+	}
+	defer dbClient.Close()
+
+	tx, err := dbClient.BeginTx()
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to begin transaction for seeding identity data category for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.ADD_CONSENT_CATEGORY.Code,
+			Message:     errors2.ADD_CONSENT_CATEGORY.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	upsertQuery := scripts.UpsertDefaultIdentityDataCategory[provider.NewDBProvider().GetDBType()]
+	_, err = tx.Exec(upsertQuery, constants.DefaultIdentityDataCategoryName, constants.DefaultIdentityDataCategoryIdentifier, orgHandle, constants.DefaultIdentityDataCategoryPurpose, pq.Array([]string{}))
+	if err != nil {
+		_ = tx.Rollback()
+		errorMsg := fmt.Sprintf("Failed to upsert identity data category for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.ADD_CONSENT_CATEGORY.Code,
+			Message:     errors2.ADD_CONSENT_CATEGORY.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	schemaQuery := scripts.GetProfileSchemaAttributeByScope[provider.NewDBProvider().GetDBType()]
+	schemaResults, err := dbClient.ExecuteQuery(schemaQuery, orgHandle, constants.ScopeIdentityAttributes)
+	if err != nil {
+		_ = tx.Rollback()
+		errorMsg := fmt.Sprintf("Failed to fetch identity attributes for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.ADD_CONSENT_CATEGORY.Code,
+			Message:     errors2.ADD_CONSENT_CATEGORY.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	attrQuery := scripts.InsertConsentCategoryAttribute[provider.NewDBProvider().GetDBType()]
+	for _, row := range schemaResults {
+		attrId := row["attribute_id"].(string)
+		_, err = tx.Exec(attrQuery, constants.DefaultIdentityDataCategoryIdentifier, constants.ScopeIdentityAttributes, attrId, "")
+		if err != nil {
+			_ = tx.Rollback()
+			errorMsg := fmt.Sprintf("Failed to insert identity attribute %s for org: %s", attrId, orgHandle)
+			logger.Debug(errorMsg, log.Error(err))
+			return errors2.NewServerError(errors2.ErrorMessage{
+				Code:        errors2.ADD_CONSENT_CATEGORY.Code,
+				Message:     errors2.ADD_CONSENT_CATEGORY.Message,
+				Description: errorMsg,
+			}, err)
+		}
+	}
+
+	logger.Info(fmt.Sprintf("Successfully seeded identity data consent category for org: %s", orgHandle))
+	return tx.Commit()
+}
+
+// GetMandatoryConsentCategoryIds returns the identifiers of all mandatory consent categories for an org.
+func GetMandatoryConsentCategoryIds(orgHandle string) ([]string, error) {
+	dbClient, err := provider.NewDBProvider().GetDBClient()
+	logger := log.GetLogger()
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to get db client for fetching mandatory category ids for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return nil, errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.FETCH_CONSENT_CATEGORIES.Code,
+			Message:     errors2.FETCH_CONSENT_CATEGORIES.Message,
+			Description: errorMsg,
+		}, err)
+	}
+	defer dbClient.Close()
+
+	query := scripts.GetMandatoryConsentCategoryIdsByOrg[provider.NewDBProvider().GetDBType()]
+	results, err := dbClient.ExecuteQuery(query, orgHandle)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to fetch mandatory category ids for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return nil, errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.FETCH_CONSENT_CATEGORIES.Code,
+			Message:     errors2.FETCH_CONSENT_CATEGORIES.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	ids := make([]string, 0, len(results))
+	for _, row := range results {
+		ids = append(ids, row["category_identifier"].(string))
+	}
+	return ids, nil
+}
+
 // GetConsentedCategoryAttributesByProfileId returns the allowed attribute sets for each
 // consented category. It only returns attributes for categories the profile has actively consented to.
-func GetConsentedCategoryAttributesByProfileId(profileId string, categoryIds []string) (map[string][]model.ConsentAttribute, error) {
+// Mandatory categories are always included regardless of profile consent records.
+func GetConsentedCategoryAttributesByProfileId(profileId string, orgHandle string, categoryIds []string) (map[string][]model.ConsentAttribute, error) {
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
 	if err != nil {
@@ -395,11 +507,30 @@ func GetConsentedCategoryAttributesByProfileId(profileId string, categoryIds []s
 		}
 	}
 
-	// Filter requested categoryIds to only those the profile consented to
+	// Fetch mandatory category IDs for the org — always included regardless of profile consent records.
+	mandatoryQuery := scripts.GetMandatoryConsentCategoryIdsByOrg[provider.NewDBProvider().GetDBType()]
+	mandatoryResults, err := dbClient.ExecuteQuery(mandatoryQuery, orgHandle)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to fetch mandatory category ids for org: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return nil, errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.FETCH_CONSENT_CATEGORIES.Code,
+			Message:     errors2.FETCH_CONSENT_CATEGORIES.Message,
+			Description: errorMsg,
+		}, err)
+	}
+	mandatorySet := make(map[string]bool)
+	for _, row := range mandatoryResults {
+		mandatorySet[row["category_identifier"].(string)] = true
+	}
+
+	// Filter requested categoryIds: include if consented OR mandatory.
+	seen := make(map[string]bool)
 	consentedIds := make([]string, 0, len(categoryIds))
 	for _, id := range categoryIds {
-		if consentedSet[id] {
+		if !seen[id] && (consentedSet[id] || mandatorySet[id]) {
 			consentedIds = append(consentedIds, id)
+			seen[id] = true
 		}
 	}
 
@@ -454,6 +585,16 @@ func getAttributesByCategoryIds(dbClient interface {
 		result[catId] = append(result[catId], attr)
 	}
 	return result, nil
+}
+
+func parseBool(raw interface{}) bool {
+	if raw == nil {
+		return false
+	}
+	if b, ok := raw.(bool); ok {
+		return b
+	}
+	return false
 }
 
 func parseStringArray(raw interface{}) []string {

@@ -31,9 +31,9 @@ import (
 // the profile owner has consented to across all requested consent categories.
 //
 // If consentIds is empty, only core fields (profile_id, user_id, meta) are returned.
-// For multiple consentIds the intersection of allowed attribute sets is applied —
-// an attribute is included only if it appears in every consented category's attribute list.
-func FilterProfileByConsent(response model.ProfileResponse, profileId string, consentIds []string) (model.ProfileResponse, error) {
+// For multiple consentIds the union of allowed attribute sets is applied.
+// Mandatory categories (e.g. identity-data) are always included regardless of profile consent records.
+func FilterProfileByConsent(response model.ProfileResponse, profileId string, orgHandle string, consentIds []string) (model.ProfileResponse, error) {
 
 	filtered := model.ProfileResponse{
 		ProfileId:  response.ProfileId,
@@ -43,12 +43,17 @@ func FilterProfileByConsent(response model.ProfileResponse, profileId string, co
 		MergedFrom: response.MergedFrom,
 	}
 
+	// When no consentIds are passed, fall back to mandatory categories only.
 	if len(consentIds) == 0 {
-		return filtered, nil
+		mandatoryIds, err := consentStore.GetMandatoryConsentCategoryIds(orgHandle)
+		if err != nil || len(mandatoryIds) == 0 {
+			return filtered, err
+		}
+		consentIds = mandatoryIds
 	}
 
-	// Fetch attributes for categories the profile has actively consented to.
-	attrsByCategory, err := consentStore.GetConsentedCategoryAttributesByProfileId(profileId, consentIds)
+	// Fetch attributes for categories the profile has actively consented to (mandatory categories always included).
+	attrsByCategory, err := consentStore.GetConsentedCategoryAttributesByProfileId(profileId, orgHandle, consentIds)
 	if err != nil {
 		return filtered, err
 	}

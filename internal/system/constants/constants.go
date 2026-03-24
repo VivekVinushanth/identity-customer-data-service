@@ -149,6 +149,12 @@ var AllowedConsentPurposes = map[string]bool{
 }
 
 const (
+	DefaultIdentityDataCategoryIdentifier = "identity-data"
+	DefaultIdentityDataCategoryName       = "Identity Data"
+	DefaultIdentityDataCategoryPurpose    = "profiling"
+)
+
+const (
 	ScopeIdentityAttributes = "identityAttributes"
 	ScopeTraits             = "traits"
 	ScopeApplicationData    = "applicationData"

@@ -306,20 +306,30 @@ var GetProfileByUserId = map[string]string{
 }
 
 var InsertConsentCategory = map[string]string{
-	"postgres": `INSERT INTO consent_categories (category_name, category_identifier, org_handle, purpose, destinations)
-				VALUES ($1, $2, $3, $4, $5)`,
+	"postgres": `INSERT INTO consent_categories (category_name, category_identifier, org_handle, purpose, destinations, is_mandatory)
+				VALUES ($1, $2, $3, $4, $5, $6)`,
+}
+
+var UpsertDefaultIdentityDataCategory = map[string]string{
+	"postgres": `INSERT INTO consent_categories (category_name, category_identifier, org_handle, purpose, destinations, is_mandatory)
+				VALUES ($1, $2, $3, $4, $5, TRUE)
+				ON CONFLICT (category_identifier) DO NOTHING`,
 }
 
 var GetAllConsentCategories = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations FROM consent_categories`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories`,
 }
 
 var GetConsentCategoryById = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations FROM consent_categories WHERE category_identifier = $1`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories WHERE category_identifier = $1`,
 }
 
 var GetConsentCategoryByName = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations FROM consent_categories WHERE category_name = $1`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories WHERE category_name = $1`,
+}
+
+var GetMandatoryConsentCategoryIdsByOrg = map[string]string{
+	"postgres": `SELECT category_identifier FROM consent_categories WHERE org_handle = $1 AND is_mandatory = TRUE`,
 }
 
 var UpdateConsentCategory = map[string]string{

@@ -978,6 +978,17 @@ func (ps *ProfilesService) GetProfileConsents(ProfileId string) ([]profileModel.
 func (ps *ProfilesService) UpdateProfileConsents(profileId string, consents []profileModel.ConsentRecord) error {
 	logger := log.GetLogger()
 
+	// Reject any attempt to modify the mandatory identity data consent category.
+	for _, c := range consents {
+		if c.CategoryIdentifier == constants.DefaultIdentityDataCategoryIdentifier {
+			return errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_MANDATORY.Code,
+				Message:     errors2.CONSENT_CAT_MANDATORY.Message,
+				Description: "Consent for the mandatory 'identity-data' category cannot be modified.",
+			}, http.StatusForbidden)
+		}
+	}
+
 	// Set the consent timestamp if not already set
 	currentTime := time.Now().UTC()
 	for i := range consents {

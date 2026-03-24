@@ -104,9 +104,9 @@ func (ph *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		filterParams,
 	)
 
-	consentIds := r.URL.Query()["consentId"]
-	if len(consentIds) > 0 {
-		filtered, filterErr := profileService.FilterProfileByConsent(*profile, profileId, consentIds)
+	if !isSystemApp {
+		consentIds := r.URL.Query()["consentId"]
+		filtered, filterErr := profileService.FilterProfileByConsent(*profile, profileId, orgHandle, consentIds)
 		if filterErr != nil {
 			utils.HandleError(w, filterErr)
 			return

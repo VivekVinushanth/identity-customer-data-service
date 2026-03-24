@@ -21,6 +21,7 @@ package service
 import (
 	"github.com/wso2/identity-customer-data-service/internal/admin_config/model"
 	"github.com/wso2/identity-customer-data-service/internal/admin_config/store"
+	consentService "github.com/wso2/identity-customer-data-service/internal/consent/service"
 	"github.com/wso2/identity-customer-data-service/internal/profile_schema/service"
 )
 
@@ -96,6 +97,10 @@ func (a AdminConfigService) UpdateAdminConfig(updatedConfig model.AdminConfig, o
 		// CDS is being enabled for the first time. Trigger initial schema sync.
 		err := schemaService.SyncProfileSchema(orgHandle)
 		if err != nil {
+			return err
+		}
+		// Seed the mandatory "Identity Data" consent category after schema is ready.
+		if err := consentService.GetConsentCategoryService().SeedDefaultConsentCategory(orgHandle); err != nil {
 			return err
 		}
 		updatedConfig.InitialSchemaSyncDone = true

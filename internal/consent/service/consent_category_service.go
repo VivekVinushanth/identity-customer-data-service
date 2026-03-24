@@ -35,6 +35,7 @@ type ConsentCategoryServiceInterface interface {
 	AddConsentCategory(category model.ConsentCategory) (*model.ConsentCategory, error)
 	UpdateConsentCategory(category model.ConsentCategory) error
 	DeleteConsentCategory(id string) error
+	SeedDefaultConsentCategory(orgHandle string) error
 }
 
 // ConsentCategoryService is the default implementation.
@@ -79,6 +80,14 @@ func (cs *ConsentCategoryService) GetConsentCategory(id string) (*model.ConsentC
 
 // AddConsentCategory adds a new category.
 func (cs *ConsentCategoryService) AddConsentCategory(category model.ConsentCategory) (*model.ConsentCategory, error) {
+
+	if category.CategoryIdentifier == constants.DefaultIdentityDataCategoryIdentifier {
+		return nil, errors2.NewClientError(errors2.ErrorMessage{
+			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
+			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
+			Description: fmt.Sprintf("The identifier '%s' is reserved and cannot be used.", constants.DefaultIdentityDataCategoryIdentifier),
+		}, http.StatusConflict)
+	}
 
 	err, isValid := cs.validateConsentCat(category)
 
@@ -174,6 +183,9 @@ func (cs *ConsentCategoryService) UpdateConsentCategory(category model.ConsentCa
 			Description: "Consent category ID is required for update.",
 		}, http.StatusBadRequest)
 	}
+	if err := guardMandatoryCategory(category.CategoryIdentifier); err != nil {
+		return err
+	}
 	return store.UpdateConsentCategory(category)
 }
 
@@ -186,5 +198,29 @@ func (cs *ConsentCategoryService) DeleteConsentCategory(categoryId string) error
 			Description: "Consent category Id is required for update.",
 		}, http.StatusBadRequest)
 	}
+	if categoryId == constants.DefaultIdentityDataCategoryIdentifier {
+		return errors2.NewClientError(errors2.ErrorMessage{
+			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
+			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
+			Description: "The 'identity-data' consent category is mandatory and cannot be deleted.",
+		}, http.StatusForbidden)
+	}
 	return store.DeleteConsentCategory(categoryId)
+}
+
+// UpdateConsentCategory guard — reject updates to mandatory category.
+func guardMandatoryCategory(categoryId string) error {
+	if categoryId == constants.DefaultIdentityDataCategoryIdentifier {
+		return errors2.NewClientError(errors2.ErrorMessage{
+			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
+			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
+			Description: "The 'identity-data' consent category is mandatory and cannot be modified.",
+		}, http.StatusForbidden)
+	}
+	return nil
+}
+
+// SeedDefaultConsentCategory seeds the mandatory identity data consent category for the org.
+func (cs *ConsentCategoryService) SeedDefaultConsentCategory(orgHandle string) error {
+	return store.SeedDefaultIdentityDataCategory(orgHandle)
 }

@@ -26,4 +26,5 @@ type ConsentCategory struct {
 	Purpose            string             `json:"purpose" bson:"purpose"`                               // One of: profiling, personalization, destination
 	Destinations       []string           `json:"destinations,omitempty" bson:"destinations,omitempty"` // Optional list of destination names
 	Attributes         []ConsentAttribute `json:"attributes,omitempty" bson:"attributes,omitempty"`     // Profile attributes covered by this consent category
+	IsMandatory        bool               `json:"is_mandatory" bson:"is_mandatory"`                     // If true, category is system-managed and cannot be modified or deleted
 }
