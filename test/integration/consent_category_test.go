@@ -43,6 +43,8 @@ func Test_Consent(t *testing.T) {
 		func(appID, org string) (error, bool) { return nil, true })
 	defer restore()
 
+	const testAppId = "app-client-001"
+
 	// Seed schema attributes so resolveAttributeScopes can look them up.
 	t.Run("PreRequisite_SeedSchema", func(t *testing.T) {
 		identityAttrs := []profileSchemaModel.ProfileSchemaAttribute{
@@ -71,6 +73,21 @@ func Test_Consent(t *testing.T) {
 			},
 		}
 		_, err = schemaSvc.AddProfileSchemaAttributesForScope(traitAttrs, constants.Traits, org)
+		require.NoError(t, err)
+
+		appAttrs := []profileSchemaModel.ProfileSchemaAttribute{
+			{
+				OrgId:                 org,
+				AttributeId:           uuid.New().String(),
+				AttributeName:         "application_data.events.event_name",
+				DisplayName:           "Event Name",
+				ValueType:             constants.StringDataType,
+				MergeStrategy:         "combine",
+				Mutability:            constants.MutabilityReadWrite,
+				ApplicationIdentifier: testAppId,
+			},
+		}
+		_, err = schemaSvc.AddProfileSchemaAttributesForScope(appAttrs, constants.ApplicationData, org)
 		require.NoError(t, err)
 	})
 
@@ -197,6 +214,50 @@ func Test_Consent(t *testing.T) {
 
 		err = svc.DeleteConsentCategory(mandatoryIds[0])
 		assert.Error(t, err, "should reject deletion of mandatory category")
+	})
+
+	t.Run("Add_applicationData_attribute_with_valid_app_id", func(t *testing.T) {
+		cat := consentModel.ConsentCategory{
+			CategoryName: "App Events",
+			OrgHandle:    org,
+			Purpose:      "profiling",
+			Attributes: []consentModel.ConsentAttribute{
+				{AttributeName: "application_data.events.event_name", AppId: testAppId},
+			},
+		}
+		created, err := svc.AddConsentCategory(cat)
+		require.NoError(t, err)
+		require.NotNil(t, created)
+		assert.Len(t, created.Attributes, 1)
+		assert.Equal(t, testAppId, created.Attributes[0].AppId)
+		// Cleanup
+		_ = svc.DeleteConsentCategory(created.CategoryIdentifier)
+	})
+
+	t.Run("Reject_applicationData_attribute_with_missing_app_id", func(t *testing.T) {
+		cat := consentModel.ConsentCategory{
+			CategoryName: "Missing AppId",
+			OrgHandle:    org,
+			Purpose:      "profiling",
+			Attributes: []consentModel.ConsentAttribute{
+				{AttributeName: "application_data.events.event_name"}, // AppId deliberately empty
+			},
+		}
+		_, err := svc.AddConsentCategory(cat)
+		assert.Error(t, err, "should reject applicationData attribute with no app_id")
+	})
+
+	t.Run("Reject_applicationData_attribute_with_mismatched_app_id", func(t *testing.T) {
+		cat := consentModel.ConsentCategory{
+			CategoryName: "Wrong AppId",
+			OrgHandle:    org,
+			Purpose:      "profiling",
+			Attributes: []consentModel.ConsentAttribute{
+				{AttributeName: "application_data.events.event_name", AppId: "wrong-app-id"},
+			},
+		}
+		_, err := svc.AddConsentCategory(cat)
+		assert.Error(t, err, "should reject app_id that does not match schema application_identifier")
 	})
 
 	t.Run("Delete_consent_category", func(t *testing.T) {
