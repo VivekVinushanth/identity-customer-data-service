@@ -645,32 +645,24 @@ func UpsertIdentityAttributes(orgID string, attrs []model.ProfileSchemaAttribute
 		}
 	}()
 
-	// Step 1: Delete existing identity_attributes for this org
-	deleteQuery := scripts.DeleteIdentityClaimsOfProfileSchema[provider.NewDBProvider().GetDBType()]
-	if _, err = tx.Exec(deleteQuery, orgID); err != nil {
-		errorMsg := fmt.Sprintf("Failed to delete existing identity attributes of profile schema for organization: %s", orgID)
-		logger.Debug(errorMsg, log.Error(err))
-		return errors.NewServerError(errors.ErrorMessage{
-			Code:        errors.SYNC_PROFILE_SCHEMA.Code,
-			Message:     errors.SYNC_PROFILE_SCHEMA.Message,
-			Description: errorMsg,
-		}, err)
-	}
-
-	// Step 2: Insert new attributes
-	insertQuery := scripts.InsertIdentityClaimsForProfileSchema[provider.NewDBProvider().GetDBType()]
+	// Step 1: Upsert incoming attributes in-place so that existing attribute_id rows
+	// are updated rather than deleted and re-created. This preserves FK references
+	// in unification_rules (ON DELETE CASCADE) and any other dependent tables.
+	upsertTemplate := scripts.UpsertIdentityClaimsForProfileSchema[provider.NewDBProvider().GetDBType()]
 
 	var valueStrings []string
 	var valueArgs []interface{}
 	argIndex := 1
+	incomingIDs := make([]string, 0, len(attrs))
 
 	for _, attr := range attrs {
 		canonicalJSON, _ := json.Marshal(attr.CanonicalValues)
 		subAttrJSON, _ := json.Marshal(attr.SubAttributes)
 		attrKey := extractClaimKeyFromURI(attr.AttributeName)
 		attr.AttributeName = attrKey
+		incomingIDs = append(incomingIDs, attr.AttributeId)
 
-		valueStrings = append(valueStrings, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d, $%d, $%d)",
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d,$%d)",
 			argIndex, argIndex+1, argIndex+2, argIndex+3, argIndex+4, argIndex+5, argIndex+6,
 			argIndex+7, argIndex+8, argIndex+9, argIndex+10, argIndex+11, argIndex+12))
 		valueArgs = append(valueArgs,
@@ -691,15 +683,41 @@ func UpsertIdentityAttributes(orgID string, attrs []model.ProfileSchemaAttribute
 		argIndex += 13
 	}
 
-	insertQuery += strings.Join(valueStrings, ",")
-	if _, err = tx.Exec(insertQuery, valueArgs...); err != nil {
-		errorMsg := fmt.Sprintf("Failed to insert new identity attributes of profile schema for organization: %s", orgID)
+	upsertQuery := fmt.Sprintf(upsertTemplate, strings.Join(valueStrings, ","))
+	if _, err = tx.Exec(upsertQuery, valueArgs...); err != nil {
+		errorMsg := fmt.Sprintf("Failed to upsert identity attributes of profile schema for organization: %s", orgID)
 		logger.Debug(errorMsg, log.Error(err))
 		return errors.NewServerError(errors.ErrorMessage{
 			Code:        errors.SYNC_PROFILE_SCHEMA.Code,
 			Message:     errors.SYNC_PROFILE_SCHEMA.Message,
 			Description: errorMsg,
 		}, err)
+	}
+
+	// Step 2: Delete only attributes that are no longer present in the identity server.
+	// Using a targeted NOT IN delete instead of a blanket delete preserves rows (and
+	// their dependent FK entries) for attributes that still exist.
+	if len(incomingIDs) > 0 {
+		notInPlaceholders := make([]string, len(incomingIDs))
+		deleteArgs := make([]interface{}, 0, len(incomingIDs)+1)
+		deleteArgs = append(deleteArgs, orgID)
+		for i, id := range incomingIDs {
+			notInPlaceholders[i] = fmt.Sprintf("$%d", i+2)
+			deleteArgs = append(deleteArgs, id)
+		}
+		staleDeleteQuery := fmt.Sprintf(
+			"DELETE FROM profile_schema WHERE org_handle = $1 AND scope = 'identity_attributes' AND attribute_id NOT IN (%s)",
+			strings.Join(notInPlaceholders, ","),
+		)
+		if _, err = tx.Exec(staleDeleteQuery, deleteArgs...); err != nil {
+			errorMsg := fmt.Sprintf("Failed to remove stale identity attributes of profile schema for organization: %s", orgID)
+			logger.Debug(errorMsg, log.Error(err))
+			return errors.NewServerError(errors.ErrorMessage{
+				Code:        errors.SYNC_PROFILE_SCHEMA.Code,
+				Message:     errors.SYNC_PROFILE_SCHEMA.Message,
+				Description: errorMsg,
+			}, err)
+		}
 	}
 
 	if err = tx.Commit(); err != nil {
