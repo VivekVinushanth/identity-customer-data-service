@@ -599,9 +599,15 @@ func mapRowToProfileAttribute(row map[string]interface{}) model.ProfileSchemaAtt
 		}
 	}
 
+	scope := ""
+	if s, ok := row["scope"].(string); ok {
+		scope = s
+	}
+
 	return model.ProfileSchemaAttribute{
 		AttributeId:           fmt.Sprint(row["attribute_id"]),
 		AttributeName:         row["attribute_name"].(string),
+		Scope:                 scope,
 		DisplayName:           row["display_name"].(string),
 		ValueType:             row["value_type"].(string),
 		MergeStrategy:         row["merge_strategy"].(string),

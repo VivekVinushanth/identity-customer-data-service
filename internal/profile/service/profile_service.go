@@ -34,6 +34,7 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/system/utils"
 	"github.com/wso2/identity-customer-data-service/internal/system/workers"
 
+	consentStore "github.com/wso2/identity-customer-data-service/internal/consent/store"
 	profileModel "github.com/wso2/identity-customer-data-service/internal/profile/model"
 	profileStore "github.com/wso2/identity-customer-data-service/internal/profile/store"
 	schemaService "github.com/wso2/identity-customer-data-service/internal/profile_schema/service"
@@ -51,7 +52,7 @@ type ProfilesServiceInterface interface {
 	FindProfileByUserId(userId string) (*profileModel.ProfileResponse, error)
 	GetAllProfilesWithFilterCursor(orgHandle string, filters []string, limit int, cursor *profileModel.ProfileCursor) ([]profileModel.ProfileResponse, bool, error)
 	GetProfileConsents(profileId string) ([]profileModel.ConsentRecord, error)
-	UpdateProfileConsents(profileId string, consents []profileModel.ConsentRecord) error
+	UpdateProfileConsents(profileId string, orgHandle string, consents []profileModel.ConsentRecord) error
 	PatchProfile(profileId, orgHandle string, data map[string]interface{}) (*profileModel.ProfileResponse, error)
 	GetProfileCookieByProfileId(profileId string) (*profileModel.ProfileCookie, error)
 	GetProfileCookieById(cookie string) (*profileModel.ProfileCookie, error)
@@ -284,7 +285,9 @@ func ValidateProfileAgainstSchema(profile profileModel.ProfileRequest, existingP
 func validateAttributeValueAgainstSchema(attr model.ProfileSchemaAttribute, val, existingVal interface{}, isUpdate bool,
 	scopeAttrs []model.ProfileSchemaAttribute, attributeLabel, attributePath string, skipMutability bool) error {
 	if !skipMutability {
+		logger := log.GetLogger()
 		if err := validateMutability(attr.Mutability, isUpdate, existingVal, val); err != nil {
+			logger.Debug(fmt.Sprintf("Mutability validation failed for attribute '%s' at path '%s'", attr.AttributeName, attributePath), log.Error(err))
 			return err
 		}
 	}
@@ -975,16 +978,24 @@ func (ps *ProfilesService) GetProfileConsents(ProfileId string) ([]profileModel.
 }
 
 // UpdateProfileConsents updates the consent records for a profile
-func (ps *ProfilesService) UpdateProfileConsents(profileId string, consents []profileModel.ConsentRecord) error {
+func (ps *ProfilesService) UpdateProfileConsents(profileId string, orgHandle string, consents []profileModel.ConsentRecord) error {
 	logger := log.GetLogger()
 
-	// Reject any attempt to modify the mandatory identity data consent category.
+	// Reject any attempt to modify a mandatory consent category.
+	mandatoryIds, err := consentStore.GetMandatoryConsentCategoryIds(orgHandle)
+	if err != nil {
+		return err
+	}
+	mandatorySet := make(map[string]bool, len(mandatoryIds))
+	for _, id := range mandatoryIds {
+		mandatorySet[id] = true
+	}
 	for _, c := range consents {
-		if c.CategoryIdentifier == constants.DefaultIdentityDataCategoryIdentifier {
+		if mandatorySet[c.CategoryIdentifier] {
 			return errors2.NewClientError(errors2.ErrorMessage{
 				Code:        errors2.CONSENT_CAT_MANDATORY.Code,
 				Message:     errors2.CONSENT_CAT_MANDATORY.Message,
-				Description: "Consent for the mandatory 'identity-data' category cannot be modified.",
+				Description: fmt.Sprintf("Consent for mandatory category '%s' cannot be modified.", c.CategoryIdentifier),
 			}, http.StatusForbidden)
 		}
 	}
@@ -998,7 +1009,7 @@ func (ps *ProfilesService) UpdateProfileConsents(profileId string, consents []pr
 	}
 
 	// Update the consents in the database
-	err := profileStore.UpdateProfileConsents(profileId, consents)
+	err = profileStore.UpdateProfileConsents(profileId, consents)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to update consents for profile: %s", profileId)
 		logger.Debug(errorMsg, log.Error(err))

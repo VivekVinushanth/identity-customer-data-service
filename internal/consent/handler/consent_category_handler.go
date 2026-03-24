@@ -49,8 +49,12 @@ func (h *ConsentCategoryHandler) GetAllConsentCategories(w http.ResponseWriter, 
 		utils.HandleError(w, err)
 		return
 	}
+	responses := make([]consentModel.ConsentCategoryResponse, 0, len(categories))
+	for _, c := range categories {
+		responses = append(responses, c.ToResponse())
+	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(categories)
+	_ = json.NewEncoder(w).Encode(responses)
 }
 
 // AddConsentCategory handles POST /consent-categories
@@ -62,8 +66,8 @@ func (h *ConsentCategoryHandler) AddConsentCategory(w http.ResponseWriter, r *ht
 		return
 	}
 
-	var category consentModel.ConsentCategory
-	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
+	var req consentModel.ConsentCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		clientError := errors.NewClientError(errors.ErrorMessage{
 			Code:        errors.ADD_CONSENT_CATEGORY_BAD_REQUEST.Code,
 			Message:     errors.ADD_CONSENT_CATEGORY_BAD_REQUEST.Message,
@@ -74,7 +78,7 @@ func (h *ConsentCategoryHandler) AddConsentCategory(w http.ResponseWriter, r *ht
 	}
 
 	orgHandle := utils.ExtractOrgHandleFromPath(r)
-	category.OrgHandle = orgHandle
+	category := req.ToCategory(orgHandle, "")
 
 	service := provider.NewConsentCategoryProvider().GetConsentCategoryService()
 	consentCat, err := service.AddConsentCategory(category)
@@ -84,8 +88,8 @@ func (h *ConsentCategoryHandler) AddConsentCategory(w http.ResponseWriter, r *ht
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(consentCat)
+	w.WriteHeader(http.StatusCreated)
+	_ = json.NewEncoder(w).Encode(consentCat.ToResponse())
 }
 
 // GetConsentCategory handles GET /consent-categories/{id}
@@ -116,7 +120,7 @@ func (h *ConsentCategoryHandler) GetConsentCategory(w http.ResponseWriter, r *ht
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(category)
+	_ = json.NewEncoder(w).Encode(category.ToResponse())
 }
 
 // UpdateConsentCategory handles PUT /consent-categories/{id}
@@ -139,8 +143,8 @@ func (h *ConsentCategoryHandler) UpdateConsentCategory(w http.ResponseWriter, r 
 		return
 	}
 
-	var category consentModel.ConsentCategory
-	if err := json.NewDecoder(r.Body).Decode(&category); err != nil {
+	var req consentModel.ConsentCategoryRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		clientError := errors.NewClientError(errors.ErrorMessage{
 			Code:        errors.UPDATE_CONSENT_CATEGORY_BAD_REQUEST.Code,
 			Message:     errors.UPDATE_CONSENT_CATEGORY_BAD_REQUEST.Message,
@@ -150,6 +154,9 @@ func (h *ConsentCategoryHandler) UpdateConsentCategory(w http.ResponseWriter, r 
 		return
 	}
 
+	orgHandle := utils.ExtractOrgHandleFromPath(r)
+	category := req.ToCategory(orgHandle, categoryId)
+
 	service := provider.NewConsentCategoryProvider().GetConsentCategoryService()
 	if err := service.UpdateConsentCategory(category); err != nil {
 		utils.HandleError(w, err)
@@ -158,7 +165,7 @@ func (h *ConsentCategoryHandler) UpdateConsentCategory(w http.ResponseWriter, r 
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(category)
+	_ = json.NewEncoder(w).Encode(category.ToResponse())
 }
 
 // DeleteConsentCategory handles Delete /consent-categories/{id}

@@ -105,7 +105,7 @@ func (ph *ProfileHandler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if !isSystemApp {
-		consentIds := r.URL.Query()["consentId"]
+		consentIds := parseCommaSeparatedOrRepeated(r.URL.Query()["consentCategoryId"])
 		filtered, filterErr := profileService.FilterProfileByConsent(*profile, profileId, orgHandle, consentIds)
 		if filterErr != nil {
 			utils.HandleError(w, filterErr)
@@ -1322,7 +1322,7 @@ func (ph *ProfileHandler) UpdateProfileConsents(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	err = profilesService.UpdateProfileConsents(profileId, consentUpdate)
+	err = profilesService.UpdateProfileConsents(profileId, orgHandle, consentUpdate)
 	if err != nil {
 		utils.HandleError(w, err)
 		return
@@ -1350,6 +1350,21 @@ func setNestedMapValue(m map[string]interface{}, path string, value interface{})
 		}
 	}
 	// todo: ensure the value type and also try how we merge the values here.
+}
+
+// parseCommaSeparatedOrRepeated handles both repeated params and comma-separated values.
+// Supports: ?consentCategoryId=uuid1&consentCategoryId=uuid2
+// and:      ?consentCategoryId=uuid1,uuid2
+func parseCommaSeparatedOrRepeated(values []string) []string {
+	var result []string
+	for _, v := range values {
+		for _, id := range strings.Split(v, ",") {
+			if trimmed := strings.TrimSpace(id); trimmed != "" {
+				result = append(result, trimmed)
+			}
+		}
+	}
+	return result
 }
 
 func extractClaimKeyFromLocalURI(localURI string) string {

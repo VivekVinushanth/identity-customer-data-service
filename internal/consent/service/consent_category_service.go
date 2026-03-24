@@ -20,12 +20,15 @@ package service
 
 import (
 	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/google/uuid"
 	model "github.com/wso2/identity-customer-data-service/internal/consent/model"
 	"github.com/wso2/identity-customer-data-service/internal/consent/store"
+	schemaService "github.com/wso2/identity-customer-data-service/internal/profile_schema/service"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
-	"net/http"
 )
 
 // ConsentCategoryServiceInterface defines the service interface.
@@ -81,14 +84,6 @@ func (cs *ConsentCategoryService) GetConsentCategory(id string) (*model.ConsentC
 // AddConsentCategory adds a new category.
 func (cs *ConsentCategoryService) AddConsentCategory(category model.ConsentCategory) (*model.ConsentCategory, error) {
 
-	if category.CategoryIdentifier == constants.DefaultIdentityDataCategoryIdentifier {
-		return nil, errors2.NewClientError(errors2.ErrorMessage{
-			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
-			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
-			Description: fmt.Sprintf("The identifier '%s' is reserved and cannot be used.", constants.DefaultIdentityDataCategoryIdentifier),
-		}, http.StatusConflict)
-	}
-
 	err, isValid := cs.validateConsentCat(category)
 
 	if !isValid || err != nil {
@@ -109,9 +104,14 @@ func (cs *ConsentCategoryService) AddConsentCategory(category model.ConsentCateg
 		}, http.StatusConflict)
 	}
 
-	if category.CategoryIdentifier == "" {
-		category.CategoryIdentifier = uuid.New().String()
+	// category_identifier is always server-generated; ignore any caller-supplied value.
+	category.CategoryIdentifier = uuid.New().String()
+
+	resolved, err := resolveAttributeScopes(category.OrgHandle, category.Attributes)
+	if err != nil {
+		return nil, err
 	}
+	category.Attributes = resolved
 
 	err = store.AddConsentCategory(category)
 	if err != nil {
@@ -126,16 +126,7 @@ func (cs *ConsentCategoryService) validateConsentCat(category model.ConsentCateg
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 			Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-			Description: "category_name, category_identifier, and purpose are required.",
-		}, http.StatusBadRequest), false
-	}
-
-	// Loop through the purposes and check if they are allowed
-	if len(category.Purpose) == 0 {
-		return errors2.NewClientError(errors2.ErrorMessage{
-			Code:        errors2.CONSENT_CAT_VALIDATION.Code,
-			Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-			Description: "Purpose is required.",
+			Description: "category_name and purpose are required.",
 		}, http.StatusBadRequest), false
 	}
 
@@ -143,34 +134,75 @@ func (cs *ConsentCategoryService) validateConsentCat(category model.ConsentCateg
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 			Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-			Description: "Invalid purpose provided. Allowed values are profiling, personalization, destination.",
+			Description: "Invalid purpose. Allowed values are profiling, personalization, destination.",
 		}, http.StatusBadRequest), false
 	}
 
 	for _, attr := range category.Attributes {
-		if !constants.AllowedConsentAttributeScopes[attr.Scope] {
+		if attr.AttributeName == "" {
 			return errors2.NewClientError(errors2.ErrorMessage{
 				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-				Description: fmt.Sprintf("Invalid attribute scope: %s. Allowed values are identityAttributes, traits, applicationData.", attr.Scope),
-			}, http.StatusBadRequest), false
-		}
-		if attr.AttributeId == "" {
-			return errors2.NewClientError(errors2.ErrorMessage{
-				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
-				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-				Description: "attribute_id is required for each attribute.",
-			}, http.StatusBadRequest), false
-		}
-		if attr.Scope == constants.ScopeApplicationData && attr.AppId == "" {
-			return errors2.NewClientError(errors2.ErrorMessage{
-				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
-				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-				Description: "app_id is required for applicationData scope attributes.",
+				Description: "attribute_name is required for each attribute.",
 			}, http.StatusBadRequest), false
 		}
 	}
 	return nil, true
+}
+
+// resolveAttributeScopes looks up each attribute in the profile schema by name and populates
+// Scope (converted to API scope) and AttributeId. Returns an error if any attribute_name is
+// not found in the org's schema. For applicationData scope, app_id must also be provided.
+func resolveAttributeScopes(orgHandle string, attrs []model.ConsentAttribute) ([]model.ConsentAttribute, error) {
+	svc := schemaService.GetProfileSchemaService()
+	resolved := make([]model.ConsentAttribute, 0, len(attrs))
+	for _, attr := range attrs {
+		schemaAttr, err := svc.GetProfileSchemaAttributeByName(attr.AttributeName, orgHandle)
+		if err != nil || schemaAttr == nil {
+			return nil, errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+				Description: fmt.Sprintf("attribute_name '%s' not found in org schema.", attr.AttributeName),
+			}, http.StatusBadRequest)
+		}
+		// Infer scope directly from the attribute_name prefix — more reliable than reading
+		// the scope column from profile_schema (avoids any query/mapping inconsistency).
+		attr.Scope = inferScope(attr.AttributeName)
+		attr.AttributeId = schemaAttr.AttributeId
+		if attr.Scope == constants.ApplicationData {
+			if attr.AppId == "" {
+				return nil, errors2.NewClientError(errors2.ErrorMessage{
+					Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+					Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+					Description: fmt.Sprintf("app_id is required for applicationData attribute '%s'.", attr.AttributeName),
+				}, http.StatusBadRequest)
+			}
+			if schemaAttr.ApplicationIdentifier != attr.AppId {
+				return nil, errors2.NewClientError(errors2.ErrorMessage{
+					Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+					Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+					Description: fmt.Sprintf("app_id '%s' does not match the application_identifier '%s' registered in the schema for attribute '%s'.", attr.AppId, schemaAttr.ApplicationIdentifier, attr.AttributeName),
+				}, http.StatusBadRequest)
+			}
+		}
+		resolved = append(resolved, attr)
+	}
+	return resolved, nil
+}
+
+// inferScope derives the API-facing scope from the attribute_name prefix.
+// "traits.*" → "traits", "identity_attributes.*" → "identityAttributes", "application_data.*" → "applicationData"
+func inferScope(attributeName string) string {
+	switch {
+	case strings.HasPrefix(attributeName, constants.Traits+"."):
+		return constants.Traits
+	case strings.HasPrefix(attributeName, constants.IdentityAttributes+"."):
+		return constants.IdentityAttributes
+	case strings.HasPrefix(attributeName, constants.ApplicationData+"."):
+		return constants.ApplicationData
+	default:
+		return attributeName
+	}
 }
 
 // UpdateConsentCategory updates an existing category.
@@ -186,6 +218,13 @@ func (cs *ConsentCategoryService) UpdateConsentCategory(category model.ConsentCa
 	if err := guardMandatoryCategory(category.CategoryIdentifier); err != nil {
 		return err
 	}
+
+	resolved, err := resolveAttributeScopes(category.OrgHandle, category.Attributes)
+	if err != nil {
+		return err
+	}
+	category.Attributes = resolved
+
 	return store.UpdateConsentCategory(category)
 }
 
@@ -198,23 +237,23 @@ func (cs *ConsentCategoryService) DeleteConsentCategory(categoryId string) error
 			Description: "Consent category Id is required for update.",
 		}, http.StatusBadRequest)
 	}
-	if categoryId == constants.DefaultIdentityDataCategoryIdentifier {
-		return errors2.NewClientError(errors2.ErrorMessage{
-			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
-			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
-			Description: "The 'identity-data' consent category is mandatory and cannot be deleted.",
-		}, http.StatusForbidden)
+	if err := guardMandatoryCategory(categoryId); err != nil {
+		return err
 	}
 	return store.DeleteConsentCategory(categoryId)
 }
 
-// UpdateConsentCategory guard — reject updates to mandatory category.
+// guardMandatoryCategory rejects mutations on any category flagged is_mandatory in the DB.
 func guardMandatoryCategory(categoryId string) error {
-	if categoryId == constants.DefaultIdentityDataCategoryIdentifier {
+	cat, err := store.GetConsentCategoryByID(categoryId)
+	if err != nil {
+		return err
+	}
+	if cat != nil && cat.IsMandatory {
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
 			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
-			Description: "The 'identity-data' consent category is mandatory and cannot be modified.",
+			Description: fmt.Sprintf("Consent category '%s' is mandatory and cannot be modified or deleted.", categoryId),
 		}, http.StatusForbidden)
 	}
 	return nil

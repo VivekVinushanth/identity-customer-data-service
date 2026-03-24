@@ -19,9 +19,12 @@
 package models
 
 // ConsentAttribute represents a profile attribute covered by a consent category.
+// Callers provide attribute_name (e.g. "traits.age"). Scope and AttributeId are derived
+// automatically from the profile schema at write time and are never supplied by the caller.
 // For applicationData scope, AppId identifies which app's data the attribute belongs to.
 type ConsentAttribute struct {
-	Scope       string `json:"scope" bson:"scope"`                               // "identityAttributes" | "traits" | "applicationData"
-	AttributeId string `json:"attribute_id" bson:"attribute_id"`                 // references ProfileSchemaAttribute.attribute_id
-	AppId       string `json:"app_id,omitempty" bson:"app_id,omitempty"`         // only for applicationData scope
+	Scope         string `json:"scope,omitempty" bson:"scope"`         // derived — "identityAttributes" | "traits" | "applicationData"
+	AttributeName string `json:"attribute_name" bson:"attribute_name"` // references ProfileSchemaAttribute.attribute_name
+	AttributeId   string `json:"-" bson:"attribute_id"`                // internal FK to profile_schema.attribute_id; enables ON DELETE CASCADE
+	AppId         string `json:"app_id,omitempty" bson:"app_id,omitempty"` // only for applicationData scope
 }
