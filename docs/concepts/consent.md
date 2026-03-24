@@ -13,27 +13,55 @@ A **consent category** is an org-level definition that declares:
 - The **attributes** it covers — which profile fields an app is allowed to see when operating under this consent
 - Whether it is **mandatory** — mandatory categories are always enforced and cannot be modified or deleted
 
+**Create / update request format:**
+
 ```json
 {
-  "category_name": "Marketing",
-  "category_identifier": "a1b2c3d4-...",
-  "purpose": "personalization",
+  "category_name": "Product Engagement",
+  "purpose": "profiling",
+  "destinations": ["segment"],
+  "attributes": [
+    "traits.engagement_score",
+    "traits.product_interests"
+  ],
+  "application_data": {
+    "i0QfDlYH6BIA8QygvmLRHikFrRIa": [
+      "application_data.events.event_name",
+      "application_data.events.event_year",
+      "application_data.saas_signups.signup_id"
+    ]
+  }
+}
+```
+
+`traits` and `identity_attributes` attributes are listed under `"attributes"` as plain strings. `application_data` attributes are grouped under `"application_data"` where **the key is the app's `application_identifier`** (the OAuth client ID registered in the org) and the values are the attribute names from the profile schema.
+
+`category_identifier` is always server-generated — any value supplied by the caller is ignored.
+
+**GET response format** (after creation):
+
+```json
+{
+  "category_name": "Product Engagement",
+  "category_identifier": "fb5b2bd7-...",
+  "purpose": "profiling",
   "is_mandatory": false,
   "attributes": [
-    { "attribute_name": "email" },
-    { "attribute_name": "age" },
-    { "attribute_name": "last_purchase", "app_id": "com.acme.crm" }
+    { "scope": "traits",           "attribute_name": "traits.engagement_score" },
+    { "scope": "traits",           "attribute_name": "traits.product_interests" },
+    { "scope": "applicationData",  "attribute_name": "application_data.events.event_name",  "app_id": "i0QfDlYH6BIA8QygvmLRHikFrRIa" },
+    { "scope": "applicationData",  "attribute_name": "application_data.events.event_year",  "app_id": "i0QfDlYH6BIA8QygvmLRHikFrRIa" },
+    { "scope": "applicationData",  "attribute_name": "application_data.saas_signups.signup_id", "app_id": "i0QfDlYH6BIA8QygvmLRHikFrRIa" }
   ]
 }
 ```
 
-`category_identifier` is always server-generated — any value supplied by the caller is ignored.
+**Validation at write time:**
 
-When creating or updating a consent category, only `attribute_name` is required per attribute. The system automatically derives the scope (`identityAttributes`, `traits`, or `applicationData`) by looking up the attribute name in the org's profile schema. If an `attribute_name` is not found in the schema, the request is rejected with `400`.
-
-`app_id` is only required when the looked-up scope is `applicationData`.
-
-The `scope` field is stored internally and returned in GET responses for reference, but never needs to be supplied by the caller.
+- Every `attribute_name` is looked up in the org's `profile_schema`. If not found the request is rejected with `400`.
+- `scope` is derived automatically from the attribute name prefix (`traits.*`, `identity_attributes.*`, `application_data.*`) — never supplied by the caller.
+- For `applicationData` attributes, the key in `"application_data"` (the `app_id`) **must match** the `application_identifier` stored in `profile_schema` for that attribute. A mismatch is rejected with `400`.
+- Each attribute's `attribute_id` (FK → `profile_schema`) is resolved at write time and stored, enabling `ON DELETE CASCADE` when a schema attribute is removed.
 
 ### Attribute scopes (derived, not supplied)
 
@@ -41,11 +69,28 @@ The `scope` field is stored internally and returned in GET responses for referen
 |---|---|
 | `identityAttributes` | Core identity fields (email, phone, name, etc.) |
 | `traits` | Behavioural and preference fields |
-| `applicationData` | Per-application data. `app_id` must also be provided |
+| `applicationData` | Per-application data. `app_id` (the app's OAuth client ID) must match the schema's `application_identifier` |
+
+### applicationData attributes and the app_id
+
+A profile's `application_data` is a two-level map:
+
+```
+application_data
+  └── <app_client_id>          ← outer key: the app's OAuth client ID
+        └── <data_group_key>   ← inner key: logical data category (e.g. "events", "saas_signups")
+              └── <value>
+```
+
+When declaring consent attributes for application data, the `app_id` (the key in the `"application_data"` request object) is the **outer app client ID**. The attribute name encodes the inner data-group key: `application_data.<data_group>.<field>`.
+
+At filter time, consent is enforced by matching the **inner data-group key** against the consented attribute names — not the outer app client ID. This means if multiple apps write data under the same data-group key (e.g. `"events"`), they are all gated by the same consent entry.
 
 ### Complex attributes
 
 If an attribute has sub-attributes (e.g. `address` with `city`, `zip`), adding the parent `attribute_name` to the consent category is sufficient. The entire object is returned as-is — sub-attributes do not need to be listed individually.
+
+The same applies to `applicationData`: adding `application_data.events.event_name` (a sub-attribute of `events`) allows the entire `events` value in the app's data to be returned, since array entries cannot be partially filtered.
 
 ### Consent granularity
 
@@ -335,7 +380,7 @@ consent_categories
         ├── attribute_name (references profile_schema.attribute_name)
         ├── attribute_id   (FK → profile_schema.attribute_id ON DELETE CASCADE)
         ├── scope          (derived from profile_schema at write time — not supplied by caller)
-        └── app_id         (only for applicationData scope)
+        └── app_id         (applicationData only — must match profile_schema.application_identifier)
 
 profile_consents
   ├── profile_id           → profiles
