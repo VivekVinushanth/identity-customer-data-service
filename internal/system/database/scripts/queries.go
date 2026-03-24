@@ -33,9 +33,29 @@ var DeleteIdentityClaimsOfProfileSchema = map[string]string{
 }
 
 var InsertIdentityClaimsForProfileSchema = map[string]string{
-	"postgres": `INSERT INTO profile_schema 
-	(org_handle, attribute_id, attribute_name, value_type, merge_strategy, mutability, application_identifier, 
+	"postgres": `INSERT INTO profile_schema
+	(org_handle, attribute_id, attribute_name, value_type, merge_strategy, mutability, application_identifier,
 	 multi_valued, canonical_values, sub_attributes, scim_dialect, scope, display_name) VALUES `,
+}
+
+// UpsertIdentityClaimsForProfileSchema inserts or updates identity attributes in place,
+// preserving the attribute_id so that FK references (e.g. unification_rules) are not broken.
+var UpsertIdentityClaimsForProfileSchema = map[string]string{
+	"postgres": `INSERT INTO profile_schema
+	(org_handle, attribute_id, attribute_name, value_type, merge_strategy, mutability, application_identifier,
+	 multi_valued, canonical_values, sub_attributes, scim_dialect, scope, display_name) VALUES
+	%s
+	ON CONFLICT (attribute_id) DO UPDATE SET
+		attribute_name         = EXCLUDED.attribute_name,
+		value_type             = EXCLUDED.value_type,
+		merge_strategy         = EXCLUDED.merge_strategy,
+		mutability             = EXCLUDED.mutability,
+		application_identifier = EXCLUDED.application_identifier,
+		multi_valued           = EXCLUDED.multi_valued,
+		canonical_values       = EXCLUDED.canonical_values,
+		sub_attributes         = EXCLUDED.sub_attributes,
+		scim_dialect           = EXCLUDED.scim_dialect,
+		display_name           = EXCLUDED.display_name`,
 }
 
 var GetProfileSchemaAttributeByName = map[string]string{
