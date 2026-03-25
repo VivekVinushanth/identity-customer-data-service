@@ -228,8 +228,8 @@ func GetConsentCategoryByID(id string) (*model.ConsentCategory, error) {
 	return &category, nil
 }
 
-// GetConsentCategoryByName retrieves a consent category by its ID.
-func GetConsentCategoryByName(name string) (*model.ConsentCategory, error) {
+// GetConsentCategoryByName retrieves a consent category by name within an org.
+func GetConsentCategoryByName(name string, orgHandle string) (*model.ConsentCategory, error) {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -245,7 +245,7 @@ func GetConsentCategoryByName(name string) (*model.ConsentCategory, error) {
 	defer dbClient.Close()
 
 	query := scripts.GetConsentCategoryByName[provider.NewDBProvider().GetDBType()]
-	results, err := dbClient.ExecuteQuery(query, name)
+	results, err := dbClient.ExecuteQuery(query, name, orgHandle)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to execute query for fetching consent category: %s", name)
 		logger.Debug(errorMsg, log.Error(err))

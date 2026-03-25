@@ -90,7 +90,7 @@ func (cs *ConsentCategoryService) AddConsentCategory(category model.ConsentCateg
 		return nil, err
 	}
 
-	existingCat, err := store.GetConsentCategoryByName(category.CategoryName)
+	existingCat, err := store.GetConsentCategoryByName(category.CategoryName, category.OrgHandle)
 
 	if err != nil {
 		return nil, err

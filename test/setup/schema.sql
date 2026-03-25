@@ -95,13 +95,13 @@ CREATE TABLE consent_categories
 
 CREATE TABLE consent_category_attributes
 (
-    id             SERIAL PRIMARY KEY,
-    category_id    VARCHAR(255) REFERENCES consent_categories (category_identifier) ON DELETE CASCADE,
-    scope          VARCHAR(50)  NOT NULL,
-    attribute_name VARCHAR(255) NOT NULL,
-    attribute_id   VARCHAR(255) REFERENCES profile_schema (attribute_id) ON DELETE CASCADE,
-    app_id         VARCHAR(255) NOT NULL DEFAULT '',
-    UNIQUE (category_id, scope, attribute_name, app_id)
+    id                     SERIAL PRIMARY KEY,
+    category_id            VARCHAR(255) REFERENCES consent_categories (category_identifier) ON DELETE CASCADE,
+    scope                  VARCHAR(50)  NOT NULL,
+    attribute_name         VARCHAR(255) NOT NULL,
+    attribute_id           VARCHAR(255) REFERENCES profile_schema (attribute_id) ON DELETE CASCADE,
+    application_identifier VARCHAR(255) NOT NULL DEFAULT '',
+    UNIQUE (category_id, scope, attribute_name, application_identifier)
 );
 
 CREATE TABLE profile_consents

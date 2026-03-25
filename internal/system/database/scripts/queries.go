@@ -327,7 +327,7 @@ var GetConsentCategoryById = map[string]string{
 }
 
 var GetConsentCategoryByName = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories WHERE category_name = $1`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories WHERE category_name = $1 AND org_handle = $2`,
 }
 
 var GetMandatoryConsentCategoryIdsByOrg = map[string]string{
