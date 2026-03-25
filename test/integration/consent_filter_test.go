@@ -113,7 +113,7 @@ func Test_ConsentFilter(t *testing.T) {
 		err := json.Unmarshal([]byte(`{
 			"user_id": "filter-user-001",
 			"identity_attributes": {"email": "jane@example.com", "phone": "+1-555-0100"},
-			"traits": {"interests": ["reading", "travel"]}
+			"traits": {"interests": "reading"}
 		}`), &req)
 		require.NoError(t, err)
 
