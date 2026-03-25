@@ -170,18 +170,18 @@ func resolveAttributeScopes(orgHandle string, attrs []model.ConsentAttribute) ([
 		attr.Scope = inferScope(attr.AttributeName)
 		attr.AttributeId = schemaAttr.AttributeId
 		if attr.Scope == constants.ApplicationData {
-			if attr.AppId == "" {
+			if attr.ApplicationIdentifier == "" {
 				return nil, errors2.NewClientError(errors2.ErrorMessage{
 					Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 					Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-					Description: fmt.Sprintf("app_id is required for applicationData attribute '%s'.", attr.AttributeName),
+					Description: fmt.Sprintf("application_identifier is required for applicationData attribute '%s'.", attr.AttributeName),
 				}, http.StatusBadRequest)
 			}
-			if schemaAttr.ApplicationIdentifier != attr.AppId {
+			if schemaAttr.ApplicationIdentifier != attr.ApplicationIdentifier {
 				return nil, errors2.NewClientError(errors2.ErrorMessage{
 					Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 					Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-					Description: fmt.Sprintf("app_id '%s' does not match the application_identifier '%s' registered in the schema for attribute '%s'.", attr.AppId, schemaAttr.ApplicationIdentifier, attr.AttributeName),
+					Description: fmt.Sprintf("application_identifier '%s' does not match the application_identifier '%s' registered in the schema for attribute '%s'.", attr.ApplicationIdentifier, schemaAttr.ApplicationIdentifier, attr.AttributeName),
 				}, http.StatusBadRequest)
 			}
 		}
@@ -215,6 +215,11 @@ func (cs *ConsentCategoryService) UpdateConsentCategory(category model.ConsentCa
 			Description: "Consent category ID is required for update.",
 		}, http.StatusBadRequest)
 	}
+
+	if err, ok := cs.validateConsentCat(category); !ok {
+		return err
+	}
+
 	if err := guardMandatoryCategory(category.CategoryIdentifier); err != nil {
 		return err
 	}

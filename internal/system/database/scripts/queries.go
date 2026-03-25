@@ -343,13 +343,13 @@ var DeleteConsentCategory = map[string]string{
 }
 
 var InsertConsentCategoryAttribute = map[string]string{
-	"postgres": `INSERT INTO consent_category_attributes (category_id, scope, attribute_name, attribute_id, app_id)
+	"postgres": `INSERT INTO consent_category_attributes (category_id, scope, attribute_name, attribute_id, application_identifier)
 				VALUES ($1, $2, $3, $4, $5)
-				ON CONFLICT (category_id, scope, attribute_name, app_id) DO NOTHING`,
+				ON CONFLICT (category_id, scope, attribute_name, application_identifier) DO NOTHING`,
 }
 
 var GetConsentCategoryAttributesByCategoryId = map[string]string{
-	"postgres": `SELECT scope, attribute_name, attribute_id, app_id FROM consent_category_attributes WHERE category_id = $1`,
+	"postgres": `SELECT scope, attribute_name, attribute_id, application_identifier FROM consent_category_attributes WHERE category_id = $1`,
 }
 
 var DeleteConsentCategoryAttributesByCategoryId = map[string]string{

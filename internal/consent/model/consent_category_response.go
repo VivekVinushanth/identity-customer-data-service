@@ -20,37 +20,32 @@ package models
 
 // ConsentCategoryResponse is the API-facing representation of a consent category.
 //
-// Non-applicationData attributes are listed as plain strings under "attributes"
-// (e.g. "traits.engagement_score", "identity_attributes.email"). The scope is
-// always derivable from the attribute name prefix so it is not repeated.
+// Attributes are returned as a list of objects, each with attribute_name and an optional
+// application_identifier (only present for applicationData-scoped attributes):
 //
-// applicationData attributes are grouped by app_id under "application_data"
-// (e.g. {"app123": ["application_data.certifications", "application_data.learning_paths"]}).
+//	{ "attribute_name": "traits.age" }
+//	{ "attribute_name": "application_data.last_purchase", "application_identifier": "crm_app" }
 //
 // org_handle is intentionally omitted — it is an internal field not relevant to callers.
 type ConsentCategoryResponse struct {
-	CategoryName       string                 `json:"category_name"`
-	CategoryIdentifier string                 `json:"category_identifier"`
-	Purpose            string                 `json:"purpose"`
-	Destinations       []string               `json:"destinations,omitempty"`
-	Attributes         []string               `json:"attributes,omitempty"`
-	ApplicationData    map[string][]string    `json:"application_data,omitempty"`
-	IsMandatory        bool                   `json:"is_mandatory"`
+	CategoryName       string             `json:"category_name"`
+	CategoryIdentifier string             `json:"category_identifier"`
+	Purpose            string             `json:"purpose"`
+	Destinations       []string           `json:"destinations,omitempty"`
+	Attributes         []ConsentAttribute `json:"attributes,omitempty"`
+	IsMandatory        bool               `json:"is_mandatory"`
 }
 
 // ToResponse converts an internal ConsentCategory to its API response form.
 func (c ConsentCategory) ToResponse() ConsentCategoryResponse {
-	attrs := make([]string, 0)
-	appData := make(map[string][]string)
-
+	attrs := make([]ConsentAttribute, 0, len(c.Attributes))
 	for _, a := range c.Attributes {
-		if a.AppId != "" {
-			appData[a.AppId] = append(appData[a.AppId], a.AttributeName)
-		} else {
-			attrs = append(attrs, a.AttributeName)
-		}
+		attrs = append(attrs, ConsentAttribute{
+			Scope:                 a.Scope,
+			AttributeName:         a.AttributeName,
+			ApplicationIdentifier: a.ApplicationIdentifier,
+		})
 	}
-
 	resp := ConsentCategoryResponse{
 		CategoryName:       c.CategoryName,
 		CategoryIdentifier: c.CategoryIdentifier,
@@ -60,9 +55,6 @@ func (c ConsentCategory) ToResponse() ConsentCategoryResponse {
 	}
 	if len(attrs) > 0 {
 		resp.Attributes = attrs
-	}
-	if len(appData) > 0 {
-		resp.ApplicationData = appData
 	}
 	return resp
 }

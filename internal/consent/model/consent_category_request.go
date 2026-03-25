@@ -20,41 +20,30 @@ package models
 
 // ConsentCategoryRequest is the API input model for creating or updating a consent category.
 //
-// Non-applicationData attributes are provided as plain strings under "attributes"
-// (e.g. "traits.engagement_score", "identity_attributes.email").
+// Each attribute is provided as an object with attribute_name and an optional application_identifier:
 //
-// applicationData attributes are grouped by app_id under "application_data"
-// (e.g. {"app123": ["application_data.certifications"]}).
+//	{ "attribute_name": "traits.age" }
+//	{ "attribute_name": "application_data.last_purchase", "application_identifier": "crm_app" }
 //
 // category_identifier and scope are never supplied by the caller:
 //   - category_identifier is always server-generated (UUID).
 //   - scope is derived automatically from the attribute name prefix in the profile schema.
 type ConsentCategoryRequest struct {
-	CategoryName    string                 `json:"category_name"`
-	Purpose         string                 `json:"purpose"`
-	Destinations    []string               `json:"destinations,omitempty"`
-	Attributes      []string               `json:"attributes,omitempty"`
-	ApplicationData map[string][]string    `json:"application_data,omitempty"`
+	CategoryName string             `json:"category_name"`
+	Purpose      string             `json:"purpose"`
+	Destinations []string           `json:"destinations,omitempty"`
+	Attributes   []ConsentAttribute `json:"attributes,omitempty"`
 }
 
 // ToCategory converts the request into the internal ConsentCategory model.
 // orgHandle and (for updates) categoryIdentifier are injected by the handler.
 func (r ConsentCategoryRequest) ToCategory(orgHandle, categoryIdentifier string) ConsentCategory {
-	attrs := make([]ConsentAttribute, 0, len(r.Attributes))
-	for _, name := range r.Attributes {
-		attrs = append(attrs, ConsentAttribute{AttributeName: name})
-	}
-	for appId, names := range r.ApplicationData {
-		for _, name := range names {
-			attrs = append(attrs, ConsentAttribute{AttributeName: name, AppId: appId})
-		}
-	}
 	return ConsentCategory{
 		CategoryName:       r.CategoryName,
 		CategoryIdentifier: categoryIdentifier,
 		OrgHandle:          orgHandle,
 		Purpose:            r.Purpose,
 		Destinations:       r.Destinations,
-		Attributes:         attrs,
+		Attributes:         r.Attributes,
 	}
 }

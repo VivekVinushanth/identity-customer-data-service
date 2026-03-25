@@ -186,16 +186,16 @@ func attributeKey(attr consentModel.ConsentAttribute) string {
 	scope := scopeFromName(attr.AttributeName)
 	if scope == constants.ApplicationData {
 		// Strip "application_data.<appId>." to get the attribute key within the bucket.
-		prefix := constants.ApplicationData + "." + attr.AppId + "."
+		prefix := constants.ApplicationData + "." + attr.ApplicationIdentifier + "."
 		if strings.HasPrefix(attr.AttributeName, prefix) {
 			rest := attr.AttributeName[len(prefix):]
 			if idx := strings.Index(rest, "."); idx >= 0 {
 				rest = rest[:idx]
 			}
-			return fmt.Sprintf("%s::%s::%s", scope, attr.AppId, rest)
+			return fmt.Sprintf("%s::%s::%s", scope, attr.ApplicationIdentifier, rest)
 		}
 		// No sub-attribute: consent covers the entire app bucket.
-		return fmt.Sprintf("%s::%s", scope, attr.AppId)
+		return fmt.Sprintf("%s::%s", scope, attr.ApplicationIdentifier)
 	}
 	return fmt.Sprintf("%s::%s", scope, topLevelKey(attr.AttributeName))
 }

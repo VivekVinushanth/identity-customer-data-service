@@ -80,7 +80,7 @@ func AddConsentCategory(category model.ConsentCategory) error {
 
 	attrQuery := scripts.InsertConsentCategoryAttribute[provider.NewDBProvider().GetDBType()]
 	for _, attr := range category.Attributes {
-		_, err = tx.Exec(attrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.AppId)
+		_, err = tx.Exec(attrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.ApplicationIdentifier)
 		if err != nil {
 			_ = tx.Rollback()
 			errorMsg := fmt.Sprintf("Failed to insert attribute %s for consent category: %s", attr.AttributeName, category.CategoryIdentifier)
@@ -327,7 +327,7 @@ func UpdateConsentCategory(category model.ConsentCategory) error {
 
 	insertAttrQuery := scripts.InsertConsentCategoryAttribute[provider.NewDBProvider().GetDBType()]
 	for _, attr := range category.Attributes {
-		_, err = tx.Exec(insertAttrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.AppId)
+		_, err = tx.Exec(insertAttrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.ApplicationIdentifier)
 		if err != nil {
 			_ = tx.Rollback()
 			errorMsg := fmt.Sprintf("Failed to insert attribute %s for consent category: %s", attr.AttributeName, category.CategoryIdentifier)
@@ -565,7 +565,6 @@ func GetConsentedCategoryAttributesByProfileId(profileId string, orgHandle strin
 			attrs = append(attrs, model.ConsentAttribute{
 				Scope:         constants.ScopeIdentityAttributes,
 				AttributeName: fmt.Sprint(row["attribute_name"]),
-				AppId:         "",
 			})
 		}
 		for _, id := range mandatoryIds {
@@ -606,7 +605,7 @@ func getAttributesByCategoryIds(dbClient interface {
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 	}
 	inQuery := fmt.Sprintf(
-		"SELECT category_id, scope, attribute_name, attribute_id, app_id FROM consent_category_attributes WHERE category_id IN (%s)",
+		"SELECT category_id, scope, attribute_name, attribute_id, application_identifier FROM consent_category_attributes WHERE category_id IN (%s)",
 		strings.Join(placeholders, ", "),
 	)
 
@@ -624,10 +623,10 @@ func getAttributesByCategoryIds(dbClient interface {
 	for _, row := range rows {
 		catId := row["category_id"].(string)
 		attr := model.ConsentAttribute{
-			Scope:         row["scope"].(string),
-			AttributeName: row["attribute_name"].(string),
-			AttributeId:   fmt.Sprint(row["attribute_id"]),
-			AppId:         row["app_id"].(string),
+			Scope:                 row["scope"].(string),
+			AttributeName:         row["attribute_name"].(string),
+			AttributeId:           fmt.Sprint(row["attribute_id"]),
+			ApplicationIdentifier: row["application_identifier"].(string),
 		}
 		result[catId] = append(result[catId], attr)
 	}
