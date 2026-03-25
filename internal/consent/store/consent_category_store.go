@@ -126,18 +126,15 @@ func GetAllConsentCategories() ([]model.ConsentCategory, error) {
 	}
 
 	categories := make([]model.ConsentCategory, 0, len(results))
-	categoryIds := make([]string, 0, len(results))
 	for _, row := range results {
-		id := row["category_identifier"].(string)
 		categories = append(categories, model.ConsentCategory{
 			CategoryName:       row["category_name"].(string),
-			CategoryIdentifier: id,
+			CategoryIdentifier: row["category_identifier"].(string),
 			OrgHandle:          row["org_handle"].(string),
 			Purpose:            row["purpose"].(string),
 			Destinations:       parseStringArray(row["destinations"]),
 			IsMandatory:        parseBool(row["is_mandatory"]),
 		})
-		categoryIds = append(categoryIds, id)
 	}
 	if len(categories) == 0 {
 		logger.Debug("No consent categories found")
