@@ -20,12 +20,15 @@ package service
 
 import (
 	"fmt"
+	"net/http"
+	"strings"
+
 	"github.com/google/uuid"
 	model "github.com/wso2/identity-customer-data-service/internal/consent/model"
 	"github.com/wso2/identity-customer-data-service/internal/consent/store"
+	schemaService "github.com/wso2/identity-customer-data-service/internal/profile_schema/service"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
-	"net/http"
 )
 
 // ConsentCategoryServiceInterface defines the service interface.
@@ -35,6 +38,7 @@ type ConsentCategoryServiceInterface interface {
 	AddConsentCategory(category model.ConsentCategory) (*model.ConsentCategory, error)
 	UpdateConsentCategory(category model.ConsentCategory) error
 	DeleteConsentCategory(id string) error
+	SeedDefaultConsentCategory(orgHandle string) error
 }
 
 // ConsentCategoryService is the default implementation.
@@ -86,7 +90,7 @@ func (cs *ConsentCategoryService) AddConsentCategory(category model.ConsentCateg
 		return nil, err
 	}
 
-	existingCat, err := store.GetConsentCategoryByName(category.CategoryName)
+	existingCat, err := store.GetConsentCategoryByName(category.CategoryName, category.OrgHandle)
 
 	if err != nil {
 		return nil, err
@@ -100,9 +104,14 @@ func (cs *ConsentCategoryService) AddConsentCategory(category model.ConsentCateg
 		}, http.StatusConflict)
 	}
 
-	if category.CategoryIdentifier == "" {
-		category.CategoryIdentifier = uuid.New().String()
+	// category_identifier is always server-generated; ignore any caller-supplied value.
+	category.CategoryIdentifier = uuid.New().String()
+
+	resolved, err := resolveAttributeScopes(category.OrgHandle, category.Attributes)
+	if err != nil {
+		return nil, err
 	}
+	category.Attributes = resolved
 
 	err = store.AddConsentCategory(category)
 	if err != nil {
@@ -117,16 +126,7 @@ func (cs *ConsentCategoryService) validateConsentCat(category model.ConsentCateg
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 			Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-			Description: "category_name, category_identifier, and purpose are required.",
-		}, http.StatusBadRequest), false
-	}
-
-	// Loop through the purposes and check if they are allowed
-	if len(category.Purpose) == 0 {
-		return errors2.NewClientError(errors2.ErrorMessage{
-			Code:        errors2.CONSENT_CAT_VALIDATION.Code,
-			Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-			Description: "Purpose is required.",
+			Description: "category_name and purpose are required.",
 		}, http.StatusBadRequest), false
 	}
 
@@ -134,10 +134,75 @@ func (cs *ConsentCategoryService) validateConsentCat(category model.ConsentCateg
 		return errors2.NewClientError(errors2.ErrorMessage{
 			Code:        errors2.CONSENT_CAT_VALIDATION.Code,
 			Message:     errors2.CONSENT_CAT_VALIDATION.Message,
-			Description: "Invalid purpose provided. Allowed values are profiling, personalization, destination.",
+			Description: "Invalid purpose. Allowed values are profiling, personalization, destination.",
 		}, http.StatusBadRequest), false
 	}
+
+	for _, attr := range category.Attributes {
+		if attr.AttributeName == "" {
+			return errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+				Description: "attribute_name is required for each attribute.",
+			}, http.StatusBadRequest), false
+		}
+	}
 	return nil, true
+}
+
+// resolveAttributeScopes looks up each attribute in the profile schema by name and populates
+// Scope (converted to API scope) and AttributeId. Returns an error if any attribute_name is
+// not found in the org's schema. For applicationData scope, app_id must also be provided.
+func resolveAttributeScopes(orgHandle string, attrs []model.ConsentAttribute) ([]model.ConsentAttribute, error) {
+	svc := schemaService.GetProfileSchemaService()
+	resolved := make([]model.ConsentAttribute, 0, len(attrs))
+	for _, attr := range attrs {
+		schemaAttr, err := svc.GetProfileSchemaAttributeByName(attr.AttributeName, orgHandle)
+		if err != nil || schemaAttr == nil {
+			return nil, errors2.NewClientError(errors2.ErrorMessage{
+				Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+				Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+				Description: fmt.Sprintf("attribute_name '%s' not found in org schema.", attr.AttributeName),
+			}, http.StatusBadRequest)
+		}
+		// Infer scope directly from the attribute_name prefix — more reliable than reading
+		// the scope column from profile_schema (avoids any query/mapping inconsistency).
+		attr.Scope = inferScope(attr.AttributeName)
+		attr.AttributeId = schemaAttr.AttributeId
+		if attr.Scope == constants.ApplicationData {
+			if attr.ApplicationIdentifier == "" {
+				return nil, errors2.NewClientError(errors2.ErrorMessage{
+					Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+					Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+					Description: fmt.Sprintf("application_identifier is required for applicationData attribute '%s'.", attr.AttributeName),
+				}, http.StatusBadRequest)
+			}
+			if schemaAttr.ApplicationIdentifier != attr.ApplicationIdentifier {
+				return nil, errors2.NewClientError(errors2.ErrorMessage{
+					Code:        errors2.CONSENT_CAT_VALIDATION.Code,
+					Message:     errors2.CONSENT_CAT_VALIDATION.Message,
+					Description: fmt.Sprintf("application_identifier '%s' does not match the application_identifier '%s' registered in the schema for attribute '%s'.", attr.ApplicationIdentifier, schemaAttr.ApplicationIdentifier, attr.AttributeName),
+				}, http.StatusBadRequest)
+			}
+		}
+		resolved = append(resolved, attr)
+	}
+	return resolved, nil
+}
+
+// inferScope derives the API-facing scope from the attribute_name prefix.
+// "traits.*" → "traits", "identity_attributes.*" → "identityAttributes", "application_data.*" → "applicationData"
+func inferScope(attributeName string) string {
+	switch {
+	case strings.HasPrefix(attributeName, constants.Traits+"."):
+		return constants.Traits
+	case strings.HasPrefix(attributeName, constants.IdentityAttributes+"."):
+		return constants.IdentityAttributes
+	case strings.HasPrefix(attributeName, constants.ApplicationData+"."):
+		return constants.ApplicationData
+	default:
+		return attributeName
+	}
 }
 
 // UpdateConsentCategory updates an existing category.
@@ -150,6 +215,21 @@ func (cs *ConsentCategoryService) UpdateConsentCategory(category model.ConsentCa
 			Description: "Consent category ID is required for update.",
 		}, http.StatusBadRequest)
 	}
+
+	if err, ok := cs.validateConsentCat(category); !ok {
+		return err
+	}
+
+	if err := guardMandatoryCategory(category.CategoryIdentifier); err != nil {
+		return err
+	}
+
+	resolved, err := resolveAttributeScopes(category.OrgHandle, category.Attributes)
+	if err != nil {
+		return err
+	}
+	category.Attributes = resolved
+
 	return store.UpdateConsentCategory(category)
 }
 
@@ -162,5 +242,29 @@ func (cs *ConsentCategoryService) DeleteConsentCategory(categoryId string) error
 			Description: "Consent category Id is required for update.",
 		}, http.StatusBadRequest)
 	}
+	if err := guardMandatoryCategory(categoryId); err != nil {
+		return err
+	}
 	return store.DeleteConsentCategory(categoryId)
+}
+
+// guardMandatoryCategory rejects mutations on any category flagged is_mandatory in the DB.
+func guardMandatoryCategory(categoryId string) error {
+	cat, err := store.GetConsentCategoryByID(categoryId)
+	if err != nil {
+		return err
+	}
+	if cat != nil && cat.IsMandatory {
+		return errors2.NewClientError(errors2.ErrorMessage{
+			Code:        errors2.CONSENT_CAT_MANDATORY.Code,
+			Message:     errors2.CONSENT_CAT_MANDATORY.Message,
+			Description: fmt.Sprintf("Consent category '%s' is mandatory and cannot be modified or deleted.", categoryId),
+		}, http.StatusForbidden)
+	}
+	return nil
+}
+
+// SeedDefaultConsentCategory seeds the mandatory identity data consent category for the org.
+func (cs *ConsentCategoryService) SeedDefaultConsentCategory(orgHandle string) error {
+	return store.SeedDefaultIdentityDataCategory(orgHandle)
 }

@@ -59,8 +59,8 @@ var UpsertIdentityClaimsForProfileSchema = map[string]string{
 }
 
 var GetProfileSchemaAttributeByName = map[string]string{
-	"postgres": `SELECT attribute_id, attribute_name, display_name, value_type, merge_strategy, mutability , application_identifier, 
-       multi_valued, sub_attributes::text, canonical_values::text FROM profile_schema WHERE org_handle = $1 
+	"postgres": `SELECT attribute_id, attribute_name, display_name, value_type, merge_strategy, mutability, application_identifier,
+       multi_valued, sub_attributes::text, canonical_values::text, scope FROM profile_schema WHERE org_handle = $1
        AND attribute_name = $2 LIMIT 1`,
 }
 
@@ -94,8 +94,8 @@ var DeleteProfileSchemaAttributeForScope = map[string]string{
 }
 
 var GetProfileSchemaAttributeById = map[string]string{
-	"postgres": `SELECT attribute_id, attribute_name, display_name, value_type, merge_strategy, mutability , application_identifier, multi_valued,   sub_attributes::text,
-  canonical_values::text
+	"postgres": `SELECT attribute_id, attribute_name, display_name, value_type, merge_strategy, mutability, application_identifier, multi_valued, sub_attributes::text,
+  canonical_values::text, scope
 	          FROM profile_schema WHERE org_handle = $1 AND attribute_id = $2`,
 }
 
@@ -326,20 +326,32 @@ var GetProfileByUserId = map[string]string{
 }
 
 var InsertConsentCategory = map[string]string{
-	"postgres": `INSERT INTO consent_categories (category_name, category_identifier, org_handle, purpose, destinations)
-				VALUES ($1, $2, $3, $4, $5)`,
+	"postgres": `INSERT INTO consent_categories (category_name, category_identifier, org_handle, purpose, destinations, is_mandatory)
+				VALUES ($1, $2, $3, $4, $5, $6)`,
+}
+
+var UpsertDefaultIdentityDataCategory = map[string]string{
+	"postgres": `INSERT INTO consent_categories (category_name, category_identifier, org_handle, purpose, destinations, is_mandatory)
+				SELECT $1::VARCHAR, $2::VARCHAR, $3::VARCHAR, $4::VARCHAR, $5::TEXT[], TRUE
+				WHERE NOT EXISTS (
+					SELECT 1 FROM consent_categories WHERE org_handle = $3::VARCHAR AND is_mandatory = TRUE
+				)`,
 }
 
 var GetAllConsentCategories = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations FROM consent_categories`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories`,
 }
 
 var GetConsentCategoryById = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations FROM consent_categories WHERE category_identifier = $1`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories WHERE category_identifier = $1`,
 }
 
 var GetConsentCategoryByName = map[string]string{
-	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations FROM consent_categories WHERE category_name = $1`,
+	"postgres": `SELECT category_name, category_identifier, org_handle, purpose, destinations, is_mandatory FROM consent_categories WHERE category_name = $1 AND org_handle = $2`,
+}
+
+var GetMandatoryConsentCategoryIdsByOrg = map[string]string{
+	"postgres": `SELECT category_identifier FROM consent_categories WHERE org_handle = $1 AND is_mandatory = TRUE`,
 }
 
 var UpdateConsentCategory = map[string]string{
@@ -348,6 +360,20 @@ var UpdateConsentCategory = map[string]string{
 
 var DeleteConsentCategory = map[string]string{
 	"postgres": `DELETE FROM consent_categories WHERE category_identifier=$1`,
+}
+
+var InsertConsentCategoryAttribute = map[string]string{
+	"postgres": `INSERT INTO consent_category_attributes (category_id, scope, attribute_name, attribute_id, application_identifier)
+				VALUES ($1, $2, $3, $4, $5)
+				ON CONFLICT (category_id, scope, attribute_name, application_identifier) DO NOTHING`,
+}
+
+var GetConsentCategoryAttributesByCategoryId = map[string]string{
+	"postgres": `SELECT scope, attribute_name, attribute_id, application_identifier FROM consent_category_attributes WHERE category_id = $1`,
+}
+
+var DeleteConsentCategoryAttributesByCategoryId = map[string]string{
+	"postgres": `DELETE FROM consent_category_attributes WHERE category_id = $1`,
 }
 
 var InsertCookie = map[string]string{

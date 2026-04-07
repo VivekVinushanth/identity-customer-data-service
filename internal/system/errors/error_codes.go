@@ -347,6 +347,11 @@ var (
 		Message: "Invalid request payload for updating consent category.",
 	}
 
+	CONSENT_CAT_MANDATORY = ErrorMessage{
+		Code:    errorPrefix + "14006",
+		Message: "Consent category is mandatory and cannot be modified or deleted.",
+	}
+
 	UPDATE_CONFIG_BAD_REQUEST = ErrorMessage{
 		Code:    errorPrefix + "16002",
 		Message: "Invalid request payload for updating admin configuration.",

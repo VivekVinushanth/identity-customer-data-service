@@ -148,6 +148,23 @@ var AllowedConsentPurposes = map[string]bool{
 	"destination":     true,
 }
 
+const (
+	DefaultIdentityDataCategoryName    = "Identity Data"
+	DefaultIdentityDataCategoryPurpose = "profiling"
+)
+
+const (
+	ScopeIdentityAttributes = "identityAttributes"
+	ScopeTraits             = "traits"
+	ScopeApplicationData    = "applicationData"
+)
+
+var AllowedConsentAttributeScopes = map[string]bool{
+	ScopeIdentityAttributes: true,
+	ScopeTraits:             true,
+	ScopeApplicationData:    true,
+}
+
 // Merge usecases
 const (
 	TempProfile_TempProfile_Merge = "TEMP_TEMP"
