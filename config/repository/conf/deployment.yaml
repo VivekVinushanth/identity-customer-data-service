@@ -81,6 +81,29 @@ auth_server:
     consent_category:delete:
       - "internal_cds_consent_category_delete"
 
+    events:create:
+      - "internal_cds_event_create"
+    events:view:
+      - "internal_cds_event_view"
+
+    orchestration_rules:view:
+      - "internal_cds_orchestration_rule_view"
+    orchestration_rules:create:
+      - "internal_cds_orchestration_rule_create"
+    orchestration_rules:update:
+      - "internal_cds_orchestration_rule_update"
+    orchestration_rules:delete:
+      - "internal_cds_orchestration_rule_delete"
+
+    notification_templates:view:
+      - "internal_cds_notification_template_view"
+    notification_templates:create:
+      - "internal_cds_notification_template_create"
+    notification_templates:update:
+      - "internal_cds_notification_template_update"
+    notification_templates:delete:
+      - "internal_cds_notification_template_delete"
+
 
 sync:
   schema:
@@ -106,6 +129,22 @@ message_queue:
     password: "${BROKER_PASSWORD}"
     profile_queue_name: "/queue/cds-profile-unification"
     schema_sync_queue_name: "/queue/cds-schema-sync"
+
+# Notification providers used by the orchestration engine's built-in
+# notify.email and notify.sms action executors (internal/orchestration/executor).
+# Leave a section's connection fields empty to leave that action type
+# unconfigured — actions of that type will then fail with a clear error
+# instead of attempting a connection.
+notifications:
+  smtp:
+    host: ""                       # e.g. "smtp.example.com"
+    port: 587
+    username: ""
+    password: "${SMTP_PASSWORD}"
+    from_address: ""
+  sms:
+    provider_url: ""                # generic HTTP relay: POSTs {"to","message"} as JSON
+    auth_header: ""                 # sent as the "Authorization" header, if set
 
 datasource:
   type: "postgres"

@@ -377,4 +377,99 @@ var (
 		Code:    errorPrefix + "19001",
 		Message: "Invalid filter format.",
 	}
+
+	ADD_EVENT = ErrorMessage{
+		Code:    errorPrefix + "15501",
+		Message: "Error while recording event.",
+	}
+
+	GET_EVENT = ErrorMessage{
+		Code:    errorPrefix + "15502",
+		Message: "Error while fetching event(s).",
+	}
+
+	EVENT_NOT_FOUND = ErrorMessage{
+		Code:    errorPrefix + "15503",
+		Message: "Event not found.",
+	}
+
+	EVENT_VALIDATION = ErrorMessage{
+		Code:    errorPrefix + "15504",
+		Message: "Event validation failed.",
+	}
+
+	ADD_ORCHESTRATION_RULE = ErrorMessage{
+		Code:    errorPrefix + "15601",
+		Message: "Error while adding orchestration rule.",
+	}
+
+	GET_ORCHESTRATION_RULE = ErrorMessage{
+		Code:    errorPrefix + "15602",
+		Message: "Error while fetching orchestration rule(s).",
+	}
+
+	UPDATE_ORCHESTRATION_RULE = ErrorMessage{
+		Code:    errorPrefix + "15603",
+		Message: "Error while updating orchestration rule.",
+	}
+
+	DELETE_ORCHESTRATION_RULE = ErrorMessage{
+		Code:    errorPrefix + "15604",
+		Message: "Error while deleting orchestration rule.",
+	}
+
+	ORCHESTRATION_RULE_NOT_FOUND = ErrorMessage{
+		Code:    errorPrefix + "15605",
+		Message: "Orchestration rule not found.",
+	}
+
+	ORCHESTRATION_RULE_VALIDATION = ErrorMessage{
+		Code:    errorPrefix + "15606",
+		Message: "Orchestration rule validation failed.",
+	}
+
+	ORCHESTRATION_RULE_PRIORITY_EXISTS = ErrorMessage{
+		Code:    errorPrefix + "15607",
+		Message: "Orchestration rule priority already taken.",
+	}
+
+	GET_ACTION_EXECUTIONS = ErrorMessage{
+		Code:    errorPrefix + "15701",
+		Message: "Error while fetching action executions.",
+	}
+
+	ADD_NOTIFICATION_TEMPLATE = ErrorMessage{
+		Code:    errorPrefix + "15801",
+		Message: "Error while adding notification template.",
+	}
+
+	GET_NOTIFICATION_TEMPLATE = ErrorMessage{
+		Code:    errorPrefix + "15802",
+		Message: "Error while fetching notification template(s).",
+	}
+
+	UPDATE_NOTIFICATION_TEMPLATE = ErrorMessage{
+		Code:    errorPrefix + "15803",
+		Message: "Error while updating notification template.",
+	}
+
+	DELETE_NOTIFICATION_TEMPLATE = ErrorMessage{
+		Code:    errorPrefix + "15804",
+		Message: "Error while deleting notification template.",
+	}
+
+	NOTIFICATION_TEMPLATE_NOT_FOUND = ErrorMessage{
+		Code:    errorPrefix + "15805",
+		Message: "Notification template not found.",
+	}
+
+	NOTIFICATION_TEMPLATE_VALIDATION = ErrorMessage{
+		Code:    errorPrefix + "15806",
+		Message: "Notification template validation failed.",
+	}
+
+	NOTIFICATION_TEMPLATE_ALREADY_EXISTS = ErrorMessage{
+		Code:    errorPrefix + "15807",
+		Message: "Notification template with the same channel and name already exists.",
+	}
 )

@@ -441,8 +441,113 @@ var GetOrgConfiguration = map[string]string{
 }
 
 var UpdateInitialSchemaSyncDoneConfig = map[string]string{
-	"postgres": `INSERT INTO cds_config (org_handle, config, value) 
-                 VALUES ($1, 'initial_schema_sync_done', $2) 
-                 ON CONFLICT (org_handle, config) 
+	"postgres": `INSERT INTO cds_config (org_handle, config, value)
+                 VALUES ($1, 'initial_schema_sync_done', $2)
+                 ON CONFLICT (org_handle, config)
                  DO UPDATE SET value = EXCLUDED.value`,
+}
+
+// -----------------------------------------------------------------------
+// Events (orchestration engine ingestion)
+// -----------------------------------------------------------------------
+
+var InsertEvent = map[string]string{
+	"postgres": `INSERT INTO events (event_id, org_handle, profile_id, application_id, event_type, event_name,
+		event_timestamp, properties, context, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+}
+
+var GetEvents = map[string]string{
+	"postgres": `SELECT event_id, org_handle, profile_id, application_id, event_type, event_name, event_timestamp,
+		properties::text, context::text, created_at FROM events WHERE org_handle = $1 ORDER BY created_at DESC LIMIT $2`,
+}
+
+var GetEvent = map[string]string{
+	"postgres": `SELECT event_id, org_handle, profile_id, application_id, event_type, event_name, event_timestamp,
+		properties::text, context::text, created_at FROM events WHERE event_id = $1`,
+}
+
+var GetEventsByProfile = map[string]string{
+	"postgres": `SELECT event_id, org_handle, profile_id, application_id, event_type, event_name, event_timestamp,
+		properties::text, context::text, created_at FROM events
+		WHERE org_handle = $1 AND profile_id = $2 ORDER BY created_at DESC LIMIT $3`,
+}
+
+// -----------------------------------------------------------------------
+// Orchestration Rules
+// -----------------------------------------------------------------------
+
+var InsertOrchestrationRule = map[string]string{
+	"postgres": `INSERT INTO orchestration_rules (rule_id, org_handle, rule_name, event_type, event_name,
+		conditions, actions, priority, is_active, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+}
+
+var GetOrchestrationRules = map[string]string{
+	"postgres": `SELECT rule_id, org_handle, rule_name, event_type, event_name, conditions::text, actions::text,
+		priority, is_active, created_at, updated_at FROM orchestration_rules WHERE org_handle = $1 ORDER BY priority ASC`,
+}
+
+var GetActiveOrchestrationRulesForTrigger = map[string]string{
+	"postgres": `SELECT rule_id, org_handle, rule_name, event_type, event_name, conditions::text, actions::text,
+		priority, is_active, created_at, updated_at FROM orchestration_rules
+		WHERE org_handle = $1 AND event_type = $2 AND event_name = $3 AND is_active = true ORDER BY priority ASC`,
+}
+
+var GetOrchestrationRule = map[string]string{
+	"postgres": `SELECT rule_id, org_handle, rule_name, event_type, event_name, conditions::text, actions::text,
+		priority, is_active, created_at, updated_at FROM orchestration_rules WHERE rule_id = $1`,
+}
+
+var UpdateOrchestrationRule = map[string]string{
+	"postgres": `UPDATE orchestration_rules SET rule_name = $1, event_type = $2, event_name = $3, conditions = $4,
+		actions = $5, priority = $6, is_active = $7, updated_at = $8 WHERE rule_id = $9`,
+}
+
+var DeleteOrchestrationRule = map[string]string{
+	"postgres": `DELETE FROM orchestration_rules WHERE rule_id = $1`,
+}
+
+// -----------------------------------------------------------------------
+// Action Executions (audit log)
+// -----------------------------------------------------------------------
+
+var InsertActionExecution = map[string]string{
+	"postgres": `INSERT INTO action_executions (execution_id, rule_id, event_id, org_handle, action_index,
+		action_type, status, attempt_count, error_message, executed_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+}
+
+var GetActionExecutionsForRule = map[string]string{
+	"postgres": `SELECT execution_id, rule_id, event_id, org_handle, action_index, action_type, status,
+		attempt_count, error_message, executed_at FROM action_executions WHERE rule_id = $1
+		ORDER BY executed_at DESC LIMIT $2`,
+}
+
+// -----------------------------------------------------------------------
+// Notification Templates
+// -----------------------------------------------------------------------
+
+var InsertNotificationTemplate = map[string]string{
+	"postgres": `INSERT INTO notification_templates (template_id, org_handle, channel, name, subject, body,
+		created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+}
+
+var GetNotificationTemplates = map[string]string{
+	"postgres": `SELECT template_id, org_handle, channel, name, subject, body, created_at, updated_at
+		FROM notification_templates WHERE org_handle = $1 ORDER BY name ASC`,
+}
+
+var GetNotificationTemplate = map[string]string{
+	"postgres": `SELECT template_id, org_handle, channel, name, subject, body, created_at, updated_at
+		FROM notification_templates WHERE template_id = $1`,
+}
+
+var UpdateNotificationTemplate = map[string]string{
+	"postgres": `UPDATE notification_templates SET name = $1, subject = $2, body = $3, updated_at = $4
+		WHERE template_id = $5`,
+}
+
+var DeleteNotificationTemplate = map[string]string{
+	"postgres": `DELETE FROM notification_templates WHERE template_id = $1`,
 }

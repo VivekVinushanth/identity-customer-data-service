@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"sync"
 
+	eventModel "github.com/wso2/identity-customer-data-service/internal/event/model"
 	profileModel "github.com/wso2/identity-customer-data-service/internal/profile/model"
 	schemaModel "github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
 )
@@ -139,6 +140,64 @@ func (q *SchemaSyncQueue) Start(handler func(schemaModel.ProfileSchemaSync)) err
 // causes the consumer goroutine started by Start to exit. It is safe to call
 // Close more than once.
 func (q *SchemaSyncQueue) Close() error {
+	q.mu.Lock()
+	q.closed = true
+	q.mu.Unlock()
+	q.closeOnce.Do(func() { close(q.ch) })
+	return nil
+}
+
+// -----------------------------------------------------------------------
+// OrchestrationQueue
+// -----------------------------------------------------------------------
+
+// OrchestrationQueue is the in-memory implementation of queue.OrchestrationQueue.
+// It uses a buffered Go channel as the underlying queue. The mu/closed fields
+// synchronize Enqueue and Close to prevent sending on a closed channel.
+type OrchestrationQueue struct {
+	ch        chan eventModel.Event
+	closeOnce sync.Once
+	mu        sync.RWMutex
+	closed    bool
+}
+
+// NewOrchestrationQueue creates a new OrchestrationQueue with the given buffer size.
+func NewOrchestrationQueue(size int) *OrchestrationQueue {
+	return &OrchestrationQueue{ch: make(chan eventModel.Event, size)}
+}
+
+// Enqueue adds an event to the in-memory channel. It is non-blocking: if the
+// channel is full or closed the item is dropped and an error is returned.
+func (q *OrchestrationQueue) Enqueue(event eventModel.Event) error {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	if q.closed {
+		return fmt.Errorf("inmemory: orchestration queue closed, dropping event %s", event.EventId)
+	}
+	select {
+	case q.ch <- event:
+		return nil
+	default:
+		return fmt.Errorf("inmemory: orchestration queue full, dropping event %s", event.EventId)
+	}
+}
+
+// Start launches a goroutine that reads events from the channel and forwards
+// each one to handler. The goroutine runs until the channel is closed.
+// Always returns nil.
+func (q *OrchestrationQueue) Start(handler func(eventModel.Event)) error {
+	go func() {
+		for event := range q.ch {
+			handler(event)
+		}
+	}()
+	return nil
+}
+
+// Close marks the queue as closed and closes the underlying channel, which
+// causes the consumer goroutine started by Start to exit. It is safe to call
+// Close more than once.
+func (q *OrchestrationQueue) Close() error {
 	q.mu.Lock()
 	q.closed = true
 	q.mu.Unlock()

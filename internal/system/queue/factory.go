@@ -37,10 +37,16 @@ type ProfileQueueProvider func(cfg config.ExternalBrokerConfig, tlsCfg config.TL
 // build the CA pool for SSL connections).
 type SchemaSyncQueueProvider func(cfg config.ExternalBrokerConfig, tlsCfg config.TLSConfig) (SchemaSyncQueue, error)
 
+// OrchestrationQueueProvider is the constructor signature for an
+// OrchestrationQueue provider. It receives the broker config and the system
+// TLS config (used to build the CA pool for SSL connections).
+type OrchestrationQueueProvider func(cfg config.ExternalBrokerConfig, tlsCfg config.TLSConfig) (OrchestrationQueue, error)
+
 var (
-	mu                       sync.RWMutex
-	profileQueueProviders    = map[string]ProfileQueueProvider{}
-	schemaSyncQueueProviders = map[string]SchemaSyncQueueProvider{}
+	mu                          sync.RWMutex
+	profileQueueProviders       = map[string]ProfileQueueProvider{}
+	schemaSyncQueueProviders    = map[string]SchemaSyncQueueProvider{}
+	orchestrationQueueProviders = map[string]OrchestrationQueueProvider{}
 )
 
 // RegisterProfileQueueProvider registers a ProfileQueueProvider under the
@@ -67,6 +73,15 @@ func RegisterSchemaSyncQueueProvider(name string, p SchemaSyncQueueProvider) {
 	mu.Lock()
 	defer mu.Unlock()
 	schemaSyncQueueProviders[name] = p
+}
+
+// RegisterOrchestrationQueueProvider registers an OrchestrationQueueProvider
+// under the given name. Call this inside an init() function in your provider
+// package so the provider is available as soon as the package is imported.
+func RegisterOrchestrationQueueProvider(name string, p OrchestrationQueueProvider) {
+	mu.Lock()
+	defer mu.Unlock()
+	orchestrationQueueProviders[name] = p
 }
 
 // NewProfileUnificationQueue returns the ProfileUnificationQueue for the
@@ -102,6 +117,25 @@ func NewSchemaSyncQueue(cfg config.Config) (SchemaSyncQueue, error) {
 	mu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf("queue: unknown schema sync queue provider %q; "+
+			"register it by importing its package (see docs/extending-queue-providers.md)", cfg.MessageQueue.Type)
+	}
+	return p(cfg.MessageQueue.Broker, cfg.TLS)
+}
+
+// NewOrchestrationQueue returns the OrchestrationQueue for the provider
+// named in cfg.Type. When the type is empty or "memory" the default
+// in-memory provider is returned. For any other type the provider must have
+// been registered (e.g. via an init() function) before this call; an error is
+// returned if no matching provider is found.
+func NewOrchestrationQueue(cfg config.Config) (OrchestrationQueue, error) {
+	if cfg.MessageQueue.Type == TypeMemory || cfg.MessageQueue.Type == "" {
+		return inmemory.NewOrchestrationQueue(constants.DefaultQueueSize), nil
+	}
+	mu.RLock()
+	p, ok := orchestrationQueueProviders[cfg.MessageQueue.Type]
+	mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("queue: unknown orchestration queue provider %q; "+
 			"register it by importing its package (see docs/extending-queue-providers.md)", cfg.MessageQueue.Type)
 	}
 	return p(cfg.MessageQueue.Broker, cfg.TLS)

@@ -32,6 +32,7 @@ import (
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
+	orchestrationWorker "github.com/wso2/identity-customer-data-service/internal/orchestration/worker"
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
 	"github.com/wso2/identity-customer-data-service/internal/system/managers"
@@ -100,6 +101,12 @@ func main() {
 	// Initialize Schema Sync worker
 	if err := workers.StartSchemaSyncWorker(); err != nil {
 		fmt.Println("Failed to start schema sync worker.", err)
+		os.Exit(1)
+	}
+
+	// Initialize Orchestration worker
+	if err := orchestrationWorker.StartOrchestrationWorker(); err != nil {
+		fmt.Println("Failed to start orchestration worker.", err)
 		os.Exit(1)
 	}
 
@@ -187,6 +194,9 @@ func main() {
 	}
 	if err := workers.StopSchemaSyncWorker(); err != nil {
 		logger.Error("Failed to stop schema sync worker.", log.Error(err))
+	}
+	if err := orchestrationWorker.StopOrchestrationWorker(); err != nil {
+		logger.Error("Failed to stop orchestration worker.", log.Error(err))
 	}
 
 	workers.StopCookieCleanupWorker()

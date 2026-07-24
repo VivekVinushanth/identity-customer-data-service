@@ -25,6 +25,9 @@ const ProfileApiPath = "profiles"
 const UnificationRulesApiPath = "unification-rules"
 const ConsentApiPath = "consent"
 const ProfileSchemaApiPath = "profile-schema"
+const EventsApiPath = "events"
+const OrchestrationRulesApiPath = "orchestration-rules"
+const NotificationTemplatesApiPath = "notification-templates"
 const IdentityServerDialectsPath = "/api/server/v1/claim-dialects"
 const Filter = "filter"
 const Attributes = "attributes"     // Query parameter to filter attributes in the request.
@@ -52,10 +55,74 @@ type contextKey string
 const TenantContextKey contextKey = "org_handle"
 
 const (
-	ProfileResource         = "profile"
-	UnificationRuleResource = "unification rule"
-	SchemaAttribute         = "schema attribute"
-	AdminConfigResource     = "admin config"
+	ProfileResource              = "profile"
+	UnificationRuleResource      = "unification rule"
+	SchemaAttribute              = "schema attribute"
+	AdminConfigResource          = "admin config"
+	EventResource                = "event"
+	OrchestrationRuleResource    = "orchestration rule"
+	ActionExecutionResource      = "action execution"
+	NotificationTemplateResource = "notification template"
+)
+
+// Notification template channels. A NotificationTemplate.Channel must be one of these.
+const (
+	NotificationChannelEmail = "email"
+	NotificationChannelSMS   = "sms"
+)
+
+var AllowedNotificationChannels = map[string]bool{
+	NotificationChannelEmail: true,
+	NotificationChannelSMS:   true,
+}
+
+// Orchestration engine action types. An Action.Type must be one of these.
+const (
+	ActionTypeAppCallback   = "app.callback"
+	ActionTypeNotifyEmail   = "notify.email"
+	ActionTypeNotifySMS     = "notify.sms"
+	ActionTypeProfileUpdate = "profile.update"
+	ActionTypeProfileSearch = "profile.search"
+	ActionTypeProfileMerge  = "profile.merge"
+)
+
+var AllowedActionTypes = map[string]bool{
+	ActionTypeAppCallback:   true,
+	ActionTypeNotifyEmail:   true,
+	ActionTypeNotifySMS:     true,
+	ActionTypeProfileUpdate: true,
+	ActionTypeProfileSearch: true,
+	ActionTypeProfileMerge:  true,
+}
+
+// Orchestration rule condition operators.
+const (
+	OperatorEquals      = "eq"
+	OperatorNotEquals   = "neq"
+	OperatorGreaterThan = "gt"
+	OperatorGreaterOrEq = "gte"
+	OperatorLessThan    = "lt"
+	OperatorLessOrEq    = "lte"
+	OperatorContains    = "contains"
+	OperatorExists      = "exists"
+)
+
+var AllowedConditionOperators = map[string]bool{
+	OperatorEquals:      true,
+	OperatorNotEquals:   true,
+	OperatorGreaterThan: true,
+	OperatorGreaterOrEq: true,
+	OperatorLessThan:    true,
+	OperatorLessOrEq:    true,
+	OperatorContains:    true,
+	OperatorExists:      true,
+}
+
+// Action execution statuses recorded in the action_executions audit table.
+const (
+	ActionExecutionStatusSuccess = "success"
+	ActionExecutionStatusFailed  = "failed"
+	ActionExecutionStatusSkipped = "skipped"
 )
 
 const (

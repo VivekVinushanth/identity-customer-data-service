@@ -141,6 +141,67 @@ CREATE TABLE cds_config (
     PRIMARY KEY (org_handle, config)
 );
 
+-- Events Table (orchestration engine ingestion point)
+CREATE TABLE events
+(
+    event_id        VARCHAR(255) PRIMARY KEY,
+    org_handle      VARCHAR(255) NOT NULL,
+    profile_id      VARCHAR(255),
+    application_id  VARCHAR(255),
+    event_type      VARCHAR(255) NOT NULL,
+    event_name      VARCHAR(255) NOT NULL,
+    event_timestamp BIGINT,
+    properties      JSONB       DEFAULT '{}'::jsonb,
+    context         JSONB       DEFAULT '{}'::jsonb,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Orchestration Rules Table (trigger + conditions + ordered actions)
+CREATE TABLE orchestration_rules
+(
+    rule_id     VARCHAR(255) PRIMARY KEY,
+    org_handle  VARCHAR(255) NOT NULL,
+    rule_name   VARCHAR(255) NOT NULL,
+    event_type  VARCHAR(255) NOT NULL,
+    event_name  VARCHAR(255) NOT NULL,
+    conditions  JSONB       DEFAULT '[]'::jsonb,
+    actions     JSONB       DEFAULT '[]'::jsonb,
+    priority    INT          NOT NULL,
+    is_active   BOOLEAN      NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- Action Execution Audit Table (one row per action run, for debugging/retries)
+CREATE TABLE action_executions
+(
+    execution_id  VARCHAR(255) PRIMARY KEY,
+    rule_id       VARCHAR(255) REFERENCES orchestration_rules (rule_id) ON DELETE CASCADE,
+    event_id      VARCHAR(255) NOT NULL,
+    org_handle    VARCHAR(255) NOT NULL,
+    action_index  INT          NOT NULL,
+    action_type   VARCHAR(255) NOT NULL,
+    status        VARCHAR(50)  NOT NULL,
+    attempt_count INT          NOT NULL DEFAULT 1,
+    error_message TEXT,
+    executed_at   TIMESTAMPTZ  NOT NULL DEFAULT now()
+);
+
+-- Notification Templates Table (reusable email/sms content, referenced from
+-- notify.email / notify.sms orchestration actions by template_id)
+CREATE TABLE notification_templates
+(
+    template_id VARCHAR(255) PRIMARY KEY,
+    org_handle  VARCHAR(255) NOT NULL,
+    channel     VARCHAR(50)  NOT NULL,
+    name        VARCHAR(255) NOT NULL,
+    subject     VARCHAR(500),
+    body        TEXT         NOT NULL,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    UNIQUE (org_handle, channel, name)
+);
+
 -- ================================
 -- PROFILES (Hot path: tenant + cursor pagination + ordering)
 -- ================================
@@ -217,3 +278,40 @@ CREATE INDEX IF NOT EXISTS idx_unification_rules_org_active_priority
 
 CREATE INDEX IF NOT EXISTS idx_unification_rules_property_id
     ON unification_rules (property_id);
+
+
+-- ================================
+-- EVENTS
+-- ================================
+CREATE INDEX IF NOT EXISTS idx_events_org_profile
+    ON events (org_handle, profile_id);
+
+CREATE INDEX IF NOT EXISTS idx_events_org_type_name
+    ON events (org_handle, event_type, event_name);
+
+
+-- ================================
+-- ORCHESTRATION_RULES
+-- ================================
+CREATE INDEX IF NOT EXISTS idx_orchestration_rules_org_active_priority
+    ON orchestration_rules (org_handle, is_active, priority);
+
+CREATE INDEX IF NOT EXISTS idx_orchestration_rules_org_trigger
+    ON orchestration_rules (org_handle, event_type, event_name);
+
+
+-- ================================
+-- ACTION_EXECUTIONS
+-- ================================
+CREATE INDEX IF NOT EXISTS idx_action_executions_rule
+    ON action_executions (rule_id, executed_at);
+
+CREATE INDEX IF NOT EXISTS idx_action_executions_event
+    ON action_executions (event_id);
+
+
+-- ================================
+-- NOTIFICATION_TEMPLATES
+-- ================================
+CREATE INDEX IF NOT EXISTS idx_notification_templates_org_channel
+    ON notification_templates (org_handle, channel);

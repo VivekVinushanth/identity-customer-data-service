@@ -108,7 +108,8 @@ type Config struct {
 	Cleanup      CleanupConfig      `yaml:"cleanup"`
 	MessageQueue MessageQueueConfig `yaml:"message_queue"`
 	// ApplicationIdentifierType selects how applications are identified: "client_id" (default) or "app_id".
-	ApplicationIdentifierType string `yaml:"application_identifier_type"`
+	ApplicationIdentifierType string              `yaml:"application_identifier_type"`
+	Notifications             NotificationsConfig `yaml:"notifications"`
 }
 
 // UsesAppIDIdentifier reports whether applications are identified by the app ID.
@@ -133,4 +134,31 @@ type CookieCleanupConfig struct {
 	Enabled   bool `yaml:"enabled"`
 	Interval  int  `yaml:"interval"` // in seconds
 	BatchSize int  `yaml:"batch_size"`
+}
+
+// SMTPConfig configures the default notify.email orchestration action
+// executor (internal/orchestration/executor). Host empty disables sending —
+// the action will fail with a clear error rather than attempt a connection.
+type SMTPConfig struct {
+	Host        string `yaml:"host"`
+	Port        int    `yaml:"port"`
+	Username    string `yaml:"username"`
+	Password    string `yaml:"password"`
+	FromAddress string `yaml:"from_address"`
+}
+
+// SMSConfig configures the default notify.sms orchestration action executor.
+// It is a generic HTTP relay: the executor POSTs {"to", "message"} as JSON to
+// ProviderURL, with AuthHeader (if set) sent as the "Authorization" header.
+// Point it at your SMS gateway's webhook, or an adapter in front of it.
+type SMSConfig struct {
+	ProviderURL string `yaml:"provider_url"`
+	AuthHeader  string `yaml:"auth_header"`
+}
+
+// NotificationsConfig groups the settings for the built-in notify.email and
+// notify.sms orchestration action executors.
+type NotificationsConfig struct {
+	SMTP SMTPConfig `yaml:"smtp"`
+	SMS  SMSConfig  `yaml:"sms"`
 }

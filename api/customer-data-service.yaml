@@ -54,6 +54,34 @@ paths:
         '204':
           description: Profile deleted successfully
 
+  /profiles/{profile_id}/events:
+    get:
+      tags: [Events]
+      summary: Get the event history for a profile
+      operationId: getProfileEvents
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: profile_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Events retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+
   /events:
     post:
       tags: [Events]
@@ -74,6 +102,8 @@ paths:
       tags: [Events]
       summary: Get events
       operationId: getEvents
+      security:
+        - bearerAuth: [ ]
       responses:
         '200':
           description: Events retrieved successfully
@@ -107,6 +137,8 @@ paths:
       tags: [Events]
       summary: Get a specific event
       operationId: getEvent
+      security:
+        - bearerAuth: [ ]
       parameters:
         - name: event_id
           in: path
@@ -282,6 +314,228 @@ paths:
       responses:
         '204':
           description: Rule deleted successfully
+
+  /orchestration-rules:
+    post:
+      tags: [Orchestration]
+      summary: Create an orchestration rule
+      operationId: createOrchestrationRule
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrchestrationRule'
+      responses:
+        '201':
+          description: Rule created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRule'
+    get:
+      tags: [Orchestration]
+      summary: Get all orchestration rules
+      operationId: getOrchestrationRules
+      security:
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Rules retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/OrchestrationRule'
+
+  /orchestration-rules/{rule_id}:
+    get:
+      tags: [Orchestration]
+      summary: Get an orchestration rule by ID
+      operationId: getOrchestrationRule
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rule retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRule'
+    patch:
+      tags: [Orchestration]
+      summary: Partially update an orchestration rule
+      operationId: patchOrchestrationRule
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrchestrationRule'
+      responses:
+        '200':
+          description: Rule updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrchestrationRule'
+    delete:
+      tags: [Orchestration]
+      summary: Delete an orchestration rule
+      operationId: deleteOrchestrationRule
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Rule deleted successfully
+
+  /orchestration-rules/{rule_id}/executions:
+    get:
+      tags: [Orchestration]
+      summary: Get the action execution audit trail for a rule
+      operationId: getActionExecutions
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: rule_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Action executions retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ActionExecution'
+
+  /notification-templates:
+    post:
+      tags: [Orchestration]
+      summary: Create a notification template
+      operationId: createNotificationTemplate
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTemplate'
+      responses:
+        '201':
+          description: Template created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplate'
+    get:
+      tags: [Orchestration]
+      summary: Get all notification templates
+      operationId: getNotificationTemplates
+      security:
+        - bearerAuth: [ ]
+      responses:
+        '200':
+          description: Templates retrieved
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/NotificationTemplate'
+
+  /notification-templates/{template_id}:
+    get:
+      tags: [Orchestration]
+      summary: Get a notification template by ID
+      operationId: getNotificationTemplate
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: template_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Template retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplate'
+    patch:
+      tags: [Orchestration]
+      summary: Partially update a notification template
+      operationId: patchNotificationTemplate
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: template_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NotificationTemplate'
+      responses:
+        '200':
+          description: Template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationTemplate'
+    delete:
+      tags: [Orchestration]
+      summary: Delete a notification template
+      operationId: deleteNotificationTemplate
+      security:
+        - bearerAuth: [ ]
+      parameters:
+        - name: template_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Template deleted successfully
 
   /consents:
     post:
@@ -496,12 +750,15 @@ components:
           example: "add_to_cart"
         event_id:
           type: string
+          readOnly: true
           example: "random uuid"
         application_id:
           type: string
           example: "application id"
-        org_id:
+        org_handle:
           type: string
+          readOnly: true
+          description: Resolved from the authenticated request path; ignored if sent by the client.
           example: "vanheim"
         event_timestamp:
           type: integer
@@ -522,6 +779,10 @@ components:
                     "timezone": "Asia/Colombo",
                     "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
           }
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
 
     ProfileEnrichmentRule:
       type: object
@@ -574,6 +835,121 @@ components:
           type: string
         value:
           type: string
+
+    Trigger:
+      type: object
+      required: [event_type, event_name]
+      properties:
+        event_type:
+          type: string
+          example: "track"
+        event_name:
+          type: string
+          example: "add_to_cart"
+
+    Action:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [app.callback, notify.email, notify.sms, profile.update, profile.search, profile.merge]
+        config:
+          type: object
+          description: Executor-specific configuration. String values may contain "{{event.*}}" / "{{profile.*}}" / "{{search_result.*}}" placeholders.
+
+    OrchestrationRule:
+      type: object
+      required: [rule_name, trigger, actions]
+      properties:
+        rule_id:
+          type: string
+          readOnly: true
+        org_handle:
+          type: string
+          readOnly: true
+        rule_name:
+          type: string
+        trigger:
+          $ref: '#/components/schemas/Trigger'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleCondition'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Action'
+        priority:
+          type: integer
+          description: Lower number = evaluated first. Rules with the same trigger must have distinct priorities.
+        is_active:
+          type: boolean
+          default: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    NotificationTemplate:
+      type: object
+      required: [channel, name, body]
+      properties:
+        template_id:
+          type: string
+          readOnly: true
+        org_handle:
+          type: string
+          readOnly: true
+        channel:
+          type: string
+          enum: [email, sms]
+        name:
+          type: string
+        subject:
+          type: string
+          description: Only meaningful for the "email" channel.
+        body:
+          type: string
+          description: Email body or SMS message text. May contain "{{event.*}}" / "{{profile.*}}" / "{{search_result.*}}" placeholders, resolved when a notify.email / notify.sms action references this template.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    ActionExecution:
+      type: object
+      properties:
+        execution_id:
+          type: string
+        rule_id:
+          type: string
+        event_id:
+          type: string
+        org_handle:
+          type: string
+        action_index:
+          type: integer
+        action_type:
+          type: string
+        status:
+          type: string
+          enum: [success, failed, skipped]
+        attempt_count:
+          type: integer
+        error_message:
+          type: string
+        executed_at:
+          type: string
+          format: date-time
 
     UnificationRule:
       type: object

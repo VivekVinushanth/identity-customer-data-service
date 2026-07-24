@@ -19,6 +19,7 @@
 package queue
 
 import (
+	eventModel "github.com/wso2/identity-customer-data-service/internal/event/model"
 	profileModel "github.com/wso2/identity-customer-data-service/internal/profile/model"
 	schemaModel "github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
 )
@@ -28,6 +29,26 @@ const (
 	TypeMemory   = "memory"
 	TypeActiveMQ = "activemq"
 )
+
+// OrchestrationQueue defines the contract for enqueuing events for
+// asynchronous orchestration rule matching and action execution.
+type OrchestrationQueue interface {
+	// Enqueue adds an event to the queue for orchestration processing. It
+	// returns nil on success or a descriptive error when the item cannot be
+	// accepted (e.g. queue full, serialization failure, broker unreachable).
+	Enqueue(event eventModel.Event) error
+
+	// Start begins consuming queue items and invokes handler for each one.
+	// Implementations must start the consumer loop in a separate goroutine
+	// so that Start returns immediately. An error is returned when the queue
+	// cannot be started (e.g. broker subscription failure).
+	Start(handler func(eventModel.Event)) error
+
+	// Close performs a graceful shutdown of the queue, flushing any
+	// in-flight items and releasing underlying resources (connections,
+	// channels, goroutines). It is safe to call Close more than once.
+	Close() error
+}
 
 // ProfileUnificationQueue defines the contract for enqueuing profiles for
 // asynchronous unification processing.

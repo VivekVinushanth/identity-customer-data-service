@@ -70,6 +70,29 @@ auth_server:
     admin_config:update:
       - "internal_cds_admin_config_update"
 
+    events:create:
+      - "internal_cds_event_create"
+    events:view:
+      - "internal_cds_event_view"
+
+    orchestration_rules:view:
+      - "internal_cds_orchestration_rule_view"
+    orchestration_rules:create:
+      - "internal_cds_orchestration_rule_create"
+    orchestration_rules:update:
+      - "internal_cds_orchestration_rule_update"
+    orchestration_rules:delete:
+      - "internal_cds_orchestration_rule_delete"
+
+    notification_templates:view:
+      - "internal_cds_notification_template_view"
+    notification_templates:create:
+      - "internal_cds_notification_template_create"
+    notification_templates:update:
+      - "internal_cds_notification_template_update"
+    notification_templates:delete:
+      - "internal_cds_notification_template_delete"
+
 datasource:
   type: {{ .Values.cloud.deployment.cds.config.datasource.type }}
   hostname: {{ .Values.cloud.deployment.cds.config.datasource.hostname }}
