@@ -247,7 +247,8 @@ var attributeTypeOptions = []model.AttributeTypeOption{
 	},
 }
 
-// GetUnificationOptions returns the supported attribute types and their allowed matching methods.
+// GetUnificationOptions returns the supported attribute types and their allowed matching
+// methods.
 func (urs *UnificationRuleService) GetUnificationOptions() model.UnificationOptionsResponse {
 	return model.UnificationOptionsResponse{AttributeTypes: attributeTypeOptions}
 }

@@ -386,6 +386,24 @@ const (
 	EvidenceStrengthLow = "LOW"
 )
 
+// Labels and descriptions for the evidence-strength choices, worded per direction because
+// the same value carries a different meaning on a match than on a mismatch.
+const (
+	MatchStrengthLabelHigh         = "Strong — can merge on its own"
+	MatchStrengthLabelMedium       = "Moderate — needs a second match"
+	MatchStrengthLabelLow          = "Weak — supporting evidence only"
+	MatchStrengthDescriptionHigh   = "Two profiles sharing this value are almost certainly the same person, so a match here can merge them unattended."
+	MatchStrengthDescriptionMedium = "A match is real evidence but not conclusive; another attribute must agree before profiles merge automatically."
+	MatchStrengthDescriptionLow    = "Many unrelated people share this value, so a match on its own is close to coincidence."
+
+	MismatchStrengthLabelHigh         = "Decisive — different values mean different people"
+	MismatchStrengthLabelMedium       = "Moderate — counts against a match"
+	MismatchStrengthLabelLow          = "Weak — people legitimately have several"
+	MismatchStrengthDescriptionHigh   = "If both profiles hold this attribute and the values differ, they are treated as different people and never merged automatically."
+	MismatchStrengthDescriptionMedium = "A difference counts against the match but does not block it on its own."
+	MismatchStrengthDescriptionLow    = "One person routinely has several of these, so differing values say little."
+)
+
 var AllowedEvidenceStrengths = map[string]bool{
 	EvidenceStrengthHigh:   true,
 	EvidenceStrengthMedium: true,
@@ -403,10 +421,14 @@ var AllowedEvidenceStrengths = map[string]bool{
 // of difference. Folding both directions into one number is what makes a mismatching
 // attribute dilute a match instead of contradicting it.
 var DefaultMatchStrength = map[string]string{
-	AttributeTypeUniqueID:       EvidenceStrengthHigh,
-	AttributeTypeEmail:          EvidenceStrengthHigh,
-	AttributeTypePhone:          EvidenceStrengthHigh,
-	AttributeTypePrimitiveExact: EvidenceStrengthMedium,
+	AttributeTypeUniqueID: EvidenceStrengthHigh,
+	AttributeTypeEmail:    EvidenceStrengthHigh,
+	AttributeTypePhone:    EvidenceStrengthHigh,
+	// PRIMITIVE_EXACT is what every rule written before typed matching resolves to, and
+	// back then any rule matching exactly merged the two profiles outright. Treating it as
+	// strong keeps that true on upgrade. An operator who wants a weaker reading gives the
+	// attribute its real type instead.
+	AttributeTypePrimitiveExact: EvidenceStrengthHigh,
 	AttributeTypeFuzzyString:    EvidenceStrengthMedium,
 	AttributeTypeName:           EvidenceStrengthLow,
 	AttributeTypeLocation:       EvidenceStrengthLow,

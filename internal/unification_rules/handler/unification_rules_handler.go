@@ -27,6 +27,7 @@ import (
 
 	adminConfigService "github.com/wso2/identity-customer-data-service/internal/admin_config/service"
 	"github.com/wso2/identity-customer-data-service/internal/identity_resolution/worker"
+	"github.com/wso2/identity-customer-data-service/internal/system/config"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
@@ -118,14 +119,12 @@ func (urh *UnificationRulesHandler) AddUnificationRule(w http.ResponseWriter, r 
 	}
 
 	// Validate evidence strengths, defaulting each from the attribute type when omitted.
-	matchStrength, strengthErr := resolveEvidenceStrength(ruleInRequest.MatchStrength,
-		constants.DefaultMatchStrength, ruleInRequest.AttributeType, "match_strength")
+	matchStrength, strengthErr := resolveEvidenceStrength(ruleInRequest.MatchStrength, "match_strength")
 	if strengthErr != nil {
 		utils.WriteErrorResponse(w, strengthErr)
 		return
 	}
-	mismatchStrength, strengthErr := resolveEvidenceStrength(ruleInRequest.MismatchStrength,
-		constants.DefaultMismatchStrength, ruleInRequest.AttributeType, "mismatch_strength")
+	mismatchStrength, strengthErr := resolveEvidenceStrength(ruleInRequest.MismatchStrength, "mismatch_strength")
 	if strengthErr != nil {
 		utils.WriteErrorResponse(w, strengthErr)
 		return
@@ -168,8 +167,8 @@ func (urh *UnificationRulesHandler) AddUnificationRule(w http.ResponseWriter, r 
 		IsActive:          addedRule.IsActive,
 		AttributeType:     addedRule.AttributeType,
 		UnificationMethod: addedRule.UnificationMethod,
-		MatchStrength:     addedRule.MatchStrength,
-		MismatchStrength:  addedRule.MismatchStrength,
+		MatchStrength:     effectiveStrength(addedRule.MatchStrength, constants.DefaultMatchStrength, addedRule.AttributeType),
+		MismatchStrength:  effectiveStrength(addedRule.MismatchStrength, constants.DefaultMismatchStrength, addedRule.AttributeType),
 	}
 
 	// Trigger reindex if rule is active.
@@ -267,8 +266,8 @@ func (urh *UnificationRulesHandler) GetUnificationRule(w http.ResponseWriter, r 
 		IsActive:          rule.IsActive,
 		AttributeType:     rule.AttributeType,
 		UnificationMethod: rule.UnificationMethod,
-		MatchStrength:     rule.MatchStrength,
-		MismatchStrength:  rule.MismatchStrength,
+		MatchStrength:     effectiveStrength(rule.MatchStrength, constants.DefaultMatchStrength, rule.AttributeType),
+		MismatchStrength:  effectiveStrength(rule.MismatchStrength, constants.DefaultMismatchStrength, rule.AttributeType),
 	}
 	utils.RespondJSON(w, http.StatusOK, ruleResponse, constants.UnificationRuleResource)
 }
@@ -371,27 +370,21 @@ func (urh *UnificationRulesHandler) PatchUnificationRule(w http.ResponseWriter, 
 	}
 
 	if ruleUpdateRequest.MatchStrength != nil {
-		if !constants.AllowedEvidenceStrengths[*ruleUpdateRequest.MatchStrength] {
-			utils.WriteErrorResponse(w, invalidEvidenceStrength("match_strength", *ruleUpdateRequest.MatchStrength))
+		strength, strengthErr := resolveEvidenceStrength(*ruleUpdateRequest.MatchStrength, "match_strength")
+		if strengthErr != nil {
+			utils.WriteErrorResponse(w, strengthErr)
 			return
 		}
-		updatedRule.MatchStrength = *ruleUpdateRequest.MatchStrength
+		updatedRule.MatchStrength = strength
 	}
 	if ruleUpdateRequest.MismatchStrength != nil {
-		if !constants.AllowedEvidenceStrengths[*ruleUpdateRequest.MismatchStrength] {
-			utils.WriteErrorResponse(w, invalidEvidenceStrength("mismatch_strength", *ruleUpdateRequest.MismatchStrength))
+		strength, strengthErr := resolveEvidenceStrength(*ruleUpdateRequest.MismatchStrength, "mismatch_strength")
+		if strengthErr != nil {
+			utils.WriteErrorResponse(w, strengthErr)
 			return
 		}
-		updatedRule.MismatchStrength = *ruleUpdateRequest.MismatchStrength
+		updatedRule.MismatchStrength = strength
 	}
-	// An attribute-type change re-seeds any strength the operator never set explicitly.
-	if updatedRule.MatchStrength == "" {
-		updatedRule.MatchStrength = constants.DefaultMatchStrength[updatedRule.AttributeType]
-	}
-	if updatedRule.MismatchStrength == "" {
-		updatedRule.MismatchStrength = constants.DefaultMismatchStrength[updatedRule.AttributeType]
-	}
-
 	err = ruleService.PatchUnificationRule(ruleId, orgHandle, updatedRule)
 	if err != nil {
 		utils.HandleError(w, err)
@@ -429,8 +422,8 @@ func (urh *UnificationRulesHandler) PatchUnificationRule(w http.ResponseWriter, 
 		IsActive:          newRule.IsActive,
 		AttributeType:     newRule.AttributeType,
 		UnificationMethod: newRule.UnificationMethod,
-		MatchStrength:     newRule.MatchStrength,
-		MismatchStrength:  newRule.MismatchStrength,
+		MatchStrength:     effectiveStrength(newRule.MatchStrength, constants.DefaultMatchStrength, newRule.AttributeType),
+		MismatchStrength:  effectiveStrength(newRule.MismatchStrength, constants.DefaultMismatchStrength, newRule.AttributeType),
 	}
 	utils.RespondJSON(w, http.StatusOK, ruleResponse, constants.UnificationRuleResource)
 }
@@ -501,19 +494,40 @@ func isCDSEnabled(orgHandle string) bool {
 	return adminConfigService.GetAdminConfigService().IsCDSEnabled(orgHandle)
 }
 
-// resolveEvidenceStrength validates an operator-supplied strength, falling back to the
-// default for the attribute type when the field is omitted.
-func resolveEvidenceStrength(supplied string, defaults map[string]string, attrType, field string) (string, *errors2.ClientError) {
+// resolveEvidenceStrength decides what to store for a rule's evidence strength.
+//
+// It returns an empty string when the operator supplied nothing, which is stored as NULL and
+// derived from the attribute type every time the rule is read. Persisting the derived value
+// instead would freeze it at creation time, so a later change of attribute_type would leave
+// the rule scoring as the old type — and, worse, would be indistinguishable from an operator
+// having chosen that strength deliberately.
+//
+// Unless the server allows overrides, a supplied value is refused rather than silently
+// dropped: a caller that believes it set the strength and is ignored would misread every
+// merge decision that follows.
+func resolveEvidenceStrength(supplied string, field string) (string, *errors2.ClientError) {
 	if supplied == "" {
-		if def, ok := defaults[attrType]; ok {
-			return def, nil
-		}
-		return constants.EvidenceStrengthMedium, nil
+		return "", nil
+	}
+	if !evidenceStrengthOverrideAllowed() {
+		return "", errors2.NewClientError(errors2.ErrorMessage{
+			Code:    errors2.BAD_REQUEST.Code,
+			Message: errors2.BAD_REQUEST.Message,
+			Description: fmt.Sprintf(
+				"%s cannot be set on this server. It is derived from attribute_type; enable "+
+					"identity_resolution.allow_evidence_strength_override to set it per rule.", field),
+		}, http.StatusBadRequest)
 	}
 	if !constants.AllowedEvidenceStrengths[supplied] {
 		return "", invalidEvidenceStrength(field, supplied)
 	}
 	return supplied, nil
+}
+
+// evidenceStrengthOverrideAllowed reports whether this deployment lets a rule carry its own
+// evidence strengths.
+func evidenceStrengthOverrideAllowed() bool {
+	return config.GetCDSRuntime().Config.IdentityResolution.AllowEvidenceStrengthOverride
 }
 
 func invalidEvidenceStrength(field, value string) *errors2.ClientError {
@@ -523,4 +537,18 @@ func invalidEvidenceStrength(field, value string) *errors2.ClientError {
 		Description: fmt.Sprintf("Invalid %s: '%s'. Allowed values: %s, %s, %s.", field, value,
 			constants.EvidenceStrengthHigh, constants.EvidenceStrengthMedium, constants.EvidenceStrengthLow),
 	}, http.StatusBadRequest)
+}
+
+// effectiveStrength reports the strength the matching engine will apply to a rule: the
+// operator's override where one was set, otherwise the value derived from the attribute
+// type. Responses carry this rather than the stored NULL, so a client can always show what
+// is in force even where the field cannot be edited.
+func effectiveStrength(stored string, defaults map[string]string, attrType string) string {
+	if stored != "" {
+		return stored
+	}
+	if derived, ok := defaults[attrType]; ok {
+		return derived
+	}
+	return constants.EvidenceStrengthMedium
 }

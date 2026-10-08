@@ -25,6 +25,11 @@ type MethodOption struct {
 }
 
 // AttributeTypeOption describes an attribute type and the matching methods it supports.
+//
+// Evidence strengths are deliberately not offered here. They are set per rule and are
+// currently derived from the attribute type unless the server is configured to accept an
+// override, so presenting them as a form choice would imply a control most deployments do
+// not have. Add them back alongside that setting when the override is opened up.
 type AttributeTypeOption struct {
 	Value          string         `json:"value"`
 	Label          string         `json:"label"`
