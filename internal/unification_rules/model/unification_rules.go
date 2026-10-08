@@ -21,6 +21,8 @@ package model
 import (
 	"sort"
 	"time"
+
+	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 )
 
 // UnificationRule represents rules for merging user profiles
@@ -98,11 +100,50 @@ func ActiveSortedByPriority(rules []UnificationRule, defaultAttributeType, defau
 // reason. Deriving it from the breakdown rather than from the final score matters because
 // the final score may have been capped on its way to a review task — comparing against it
 // would find no rule at all and fall back to a generic reason.
+// PrimaryRuleName names the rule a merge should be attributed to, reconstructed from the
+// score breakdown recorded for the pair.
+//
+// It has to mirror how ScoreCandidate chose, because the rule that decided is not always the
+// first rule that agreed. When an organisation keeps deterministic matches decisive, an
+// exact match at any priority ends the evaluation, so a fuzzy rule ranked above it agreed
+// but did not decide anything. Attributing the merge to that fuzzy rule would record a
+// similarity match where an exact identifier was the actual cause — overstating how
+// uncertain the merge was, on the one record that answers "why were these combined?".
+//
+// The order below follows ScoreCandidate's: a unique identifier matching exactly wins
+// outright, then a deterministic agreement if the organisation treats those as decisive,
+// then the first agreement of any kind.
 func PrimaryRuleName(breakdown map[string]float64, rules []UnificationRule,
-	agreementThreshold float64) (string, bool) {
+	agreementThreshold float64, deterministicMatchDecisive bool) (string, bool) {
+
+	agreed := func(rule UnificationRule) bool {
+		score, scored := breakdown[rule.PropertyName]
+		return scored && score >= agreementThreshold
+	}
+
+	// A unique identifier matching exactly is conclusive on its own, but ScoreCandidate only
+	// short-circuits on it when it is the primary signal — the first rule to agree. Looking
+	// past that rule would attribute to an identifier the scorer never consulted.
+	for _, rule := range rules {
+		if !agreed(rule) {
+			continue
+		}
+		if rule.AttributeType == constants.AttributeTypeUniqueID && breakdown[rule.PropertyName] >= 1.0 {
+			return rule.RuleName, true
+		}
+		break
+	}
+
+	if deterministicMatchDecisive {
+		for _, rule := range rules {
+			if rule.UnificationMethod != constants.UnificationMethodFuzzy && agreed(rule) {
+				return rule.RuleName, true
+			}
+		}
+	}
 
 	for _, rule := range rules {
-		if score, scored := breakdown[rule.PropertyName]; scored && score >= agreementThreshold {
+		if agreed(rule) {
 			return rule.RuleName, true
 		}
 	}

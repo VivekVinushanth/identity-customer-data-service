@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/google/uuid"
 	"github.com/wso2/identity-customer-data-service/internal/identity_resolution/model"
 	"github.com/wso2/identity-customer-data-service/internal/system/cache"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
@@ -61,7 +60,7 @@ func UpsertBlockingKeys(ctx context.Context, profileID, orgHandle string, keys [
 	}
 
 	deleteQuery := scripts.DeleteBlockingKeysSQL
-	if _, err = tx.ExecContext(ctx, deleteQuery, profileID); err != nil {
+	if _, err = tx.ExecContext(ctx, deleteQuery, orgHandle, profileID); err != nil {
 		logger.Error("BlockingStore: failed to delete existing blocking keys", log.Error(err))
 		if rbErr := tx.Rollback(); rbErr != nil {
 			logger.Error("BlockingStore: failed to rollback transaction", log.Error(rbErr))
@@ -79,9 +78,9 @@ func UpsertBlockingKeys(ctx context.Context, profileID, orgHandle string, keys [
 
 	for _, key := range keys {
 		valueClauses = append(valueClauses,
-			fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2, argIdx+3, argIdx+4))
-		args = append(args, uuid.New().String(), profileID, orgHandle, key.AttributeName, key.KeyValue)
-		argIdx += 5
+			fmt.Sprintf("($%d, $%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+		args = append(args, profileID, orgHandle, key.AttributeName, key.KeyValue)
+		argIdx += blockingKeyColumns
 	}
 
 	insertQuery := scripts.IRInsertBlockingKeys.Format(strings.Join(valueClauses, ", "))
@@ -110,7 +109,7 @@ func UpsertBlockingKeys(ctx context.Context, profileID, orgHandle string, keys [
 	return nil
 }
 
-func DeleteBlockingKeys(ctx context.Context, profileID string) error {
+func DeleteBlockingKeys(ctx context.Context, orgHandle, profileID string) error {
 	logger := log.GetLogger()
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
@@ -124,7 +123,7 @@ func DeleteBlockingKeys(ctx context.Context, profileID string) error {
 	defer dbClient.Close()
 
 	deleteQuery := scripts.DeleteBlockingKeysSQL
-	_, err = dbClient.ExecuteQueryContext(ctx, deleteQuery, profileID)
+	_, err = dbClient.ExecuteQueryContext(ctx, deleteQuery, orgHandle, profileID)
 	if err != nil {
 		logger.Error("BlockingStore: failed to delete blocking keys", log.Error(err))
 		return errors2.NewServerError(errors2.ErrorMessage{
@@ -190,9 +189,9 @@ func InsertBlockingKeys(ctx context.Context, profileID, orgHandle string, keys [
 
 	for _, key := range keys {
 		valueClauses = append(valueClauses,
-			fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2, argIdx+3, argIdx+4))
-		args = append(args, uuid.New().String(), profileID, orgHandle, key.AttributeName, key.KeyValue)
-		argIdx += 5
+			fmt.Sprintf("($%d, $%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+		args = append(args, profileID, orgHandle, key.AttributeName, key.KeyValue)
+		argIdx += blockingKeyColumns
 	}
 
 	insertQuery := scripts.IRInsertBlockingKeys.Format(strings.Join(valueClauses, ", "))
@@ -218,12 +217,12 @@ type blockingKeyRow struct {
 }
 
 // blockingKeyColumns is how many bind parameters each row consumes.
-const blockingKeyColumns = 5
+const blockingKeyColumns = 4
 
 // maxBlockingKeyRowsPerInsert caps how many rows go into one statement.
 //
 // The PostgreSQL wire protocol allows at most 65535 bind parameters per statement, so at
-// five parameters per row the hard ceiling is 13107. A page of 500 profiles crosses that
+// four parameters per row the hard ceiling is 16383. A page of 500 profiles crosses that
 // once profiles average roughly 26 keys each — which ordinary data reaches: four email
 // addresses under a fuzzy rule is 20 keys before a fuzzy name adds 7 more. Past the limit
 // the whole statement is rejected, and because the backfill logs the failure and moves on,
@@ -265,8 +264,8 @@ func InsertBlockingKeysBatch(ctx context.Context, orgHandle string, perProfileKe
 
 		for _, row := range chunk {
 			valueClauses = append(valueClauses,
-				fmt.Sprintf("($%d, $%d, $%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2, argIdx+3, argIdx+4))
-			args = append(args, uuid.New().String(), row.profileID, orgHandle,
+				fmt.Sprintf("($%d, $%d, $%d, $%d)", argIdx, argIdx+1, argIdx+2, argIdx+3))
+			args = append(args, row.profileID, orgHandle,
 				row.key.AttributeName, row.key.KeyValue)
 			argIdx += blockingKeyColumns
 		}

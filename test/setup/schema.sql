@@ -155,15 +155,14 @@ CREATE TABLE cds_config (
 );
 
 CREATE TABLE IF NOT EXISTS blocking_keys (
-    key_id          VARCHAR(255) PRIMARY KEY,
     profile_id      VARCHAR(255) NOT NULL REFERENCES profiles(profile_id) ON DELETE CASCADE,
     org_handle      VARCHAR(255) NOT NULL,
     attribute_name  VARCHAR(255) NOT NULL,
     key_value       VARCHAR(512) NOT NULL,
-    CONSTRAINT uq_blocking_key UNIQUE (org_handle, attribute_name, key_value, profile_id)
+    PRIMARY KEY (org_handle, attribute_name, key_value, profile_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_blocking_keys_profile ON blocking_keys(profile_id);
+CREATE INDEX IF NOT EXISTS idx_blocking_keys_org_profile ON blocking_keys(org_handle, profile_id);
 
 CREATE TABLE IF NOT EXISTS review_tasks (
     id                      VARCHAR(255) PRIMARY KEY,

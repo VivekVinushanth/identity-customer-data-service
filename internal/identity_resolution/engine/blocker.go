@@ -40,21 +40,23 @@ func FindCandidatesByIndex(
 ) []string {
 	logger := log.GetLogger()
 
-	// Exact-normalized keys and recall-widening keys (LSH bands, phonetic codes, phone
-	// suffixes) are looked up as separate groups even when they belong to the same
-	// attribute. They share a key space but not a selectivity: a single hot fuzzy bucket
-	// — a common surname, a crowded LSH band — can hold more profiles than one lookup is
-	// allowed to return, and if it shared a query with the exact key it would take that
-	// key's precise matches down with it. Splitting them means an over-broad fuzzy bucket
-	// costs recall only on the fuzzy side.
+	// Each kind of key is looked up on its own, even within one attribute. They share a key
+	// space but not a selectivity, and one lookup's cap is shared by everything in it.
+	//
+	// An exact key is the narrowest. An LSH band covers values close to one spelling. A
+	// phonetic code is the broadest by design — every spelling that sounds alike collapses
+	// onto it, so for a common name it holds far more profiles than any single band does.
+	// Grouped together, the phonetic code alone pushes the lookup past the cap and the bands
+	// are discarded with it, losing the typo matches they exist to find. Separated, an
+	// over-broad kind costs only its own recall.
 	type lookupGroup struct {
 		attrName string
-		isFuzzy  bool
+		kind     model.KeyKind
 	}
 
 	grouped := make(map[lookupGroup][]string)
 	for _, k := range keys {
-		g := lookupGroup{attrName: k.AttributeName, isFuzzy: k.IsFuzzy}
+		g := lookupGroup{attrName: k.AttributeName, kind: k.Kind}
 		grouped[g] = append(grouped[g], k.KeyValue)
 	}
 
@@ -64,7 +66,7 @@ func FindCandidatesByIndex(
 	lookup := func(g lookupGroup) {
 		ids, err := candidateLookup(orgHandle, g.attrName, grouped[g], excludeProfileID, constants.MaxCandidatesPerRule)
 		if err != nil {
-			logger.Error(fmt.Sprintf("Blocker: query failed for attribute '%s' (fuzzy=%t)", g.attrName, g.isFuzzy),
+			logger.Error(fmt.Sprintf("Blocker: query failed for attribute '%s' (kind=%d)", g.attrName, g.kind),
 				log.Error(err))
 			return
 		}
@@ -80,15 +82,18 @@ func FindCandidatesByIndex(
 		}
 	}
 
-	// Exact groups first so precise matches head the candidate list.
-	for g := range grouped {
-		if !g.isFuzzy {
-			lookup(g)
-		}
-	}
-	for g := range grouped {
-		if g.isFuzzy {
-			lookup(g)
+	// Narrowest kind first, so the most precise matches head the candidate list and the
+	// broader kinds only add what they find beyond it.
+	for _, kind := range []model.KeyKind{
+		model.KeyKindExact,
+		model.KeyKindSuffix,
+		model.KeyKindLSH,
+		model.KeyKindPhonetic,
+	} {
+		for g := range grouped {
+			if g.kind == kind {
+				lookup(g)
+			}
 		}
 	}
 
@@ -148,7 +153,7 @@ func GenerateBlockingKeys(attrType string, method string, attrName string, value
 				break
 			}
 			for _, lshKey := range algorithms.LSHBandHashes(norm) {
-				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, IsFuzzy: true})
+				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, Kind: model.KeyKindLSH})
 			}
 
 		case constants.AttributeTypePhone:
@@ -161,7 +166,7 @@ func GenerateBlockingKeys(attrType string, method string, attrName string, value
 			if len(norm) >= constants.PhoneSuffixBlockingLength {
 				suffix := norm[len(norm)-constants.PhoneSuffixBlockingLength:]
 				if suffix != norm {
-					keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: suffix, IsFuzzy: true})
+					keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: suffix, Kind: model.KeyKindSuffix})
 				}
 			}
 
@@ -172,13 +177,13 @@ func GenerateBlockingKeys(attrType string, method string, attrName string, value
 			}
 			priPhonetic, altPhonetic := algorithms.DoubleMetaphonePhrase(value)
 			if priPhonetic != "" && priPhonetic != norm {
-				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: priPhonetic, IsFuzzy: true})
+				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: priPhonetic, Kind: model.KeyKindPhonetic})
 			}
 			if altPhonetic != "" && altPhonetic != priPhonetic && altPhonetic != norm {
-				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: altPhonetic, IsFuzzy: true})
+				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: altPhonetic, Kind: model.KeyKindPhonetic})
 			}
 			for _, lshKey := range algorithms.LSHBandHashes(norm) {
-				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, IsFuzzy: true})
+				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, Kind: model.KeyKindLSH})
 			}
 
 		case constants.AttributeTypeLocation:
@@ -187,7 +192,7 @@ func GenerateBlockingKeys(attrType string, method string, attrName string, value
 				break
 			}
 			for _, lshKey := range algorithms.LSHBandHashes(norm) {
-				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, IsFuzzy: true})
+				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, Kind: model.KeyKindLSH})
 			}
 
 		case constants.AttributeTypeFuzzyString:
@@ -196,7 +201,7 @@ func GenerateBlockingKeys(attrType string, method string, attrName string, value
 				break
 			}
 			for _, lshKey := range algorithms.LSHBandHashes(norm) {
-				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, IsFuzzy: true})
+				keys = append(keys, model.BlockingKey{AttributeName: attrName, KeyValue: lshKey, Kind: model.KeyKindLSH})
 			}
 		}
 	} else {

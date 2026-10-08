@@ -209,7 +209,7 @@ func (s *IdentityResolutionService) ResolveReviewTask(ctx context.Context, orgHa
 			constants.UnificationMethodDeterministic, constants.DefaultMatchStrength,
 			constants.DefaultMismatchStrength)
 		thresholds := model.LoadThresholds(ctx, task.OrgHandle)
-		if ruleName, found := urModel.PrimaryRuleName(task.ScoreBreakdown, rules, thresholds.ManualReview); found {
+		if ruleName, found := urModel.PrimaryRuleName(task.ScoreBreakdown, rules, thresholds.ManualReview, thresholds.DeterministicMatchDecisive); found {
 			mergeReason = ruleName
 		}
 	}

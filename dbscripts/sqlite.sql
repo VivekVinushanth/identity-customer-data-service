@@ -207,17 +207,20 @@ CREATE INDEX IF NOT EXISTS idx_unification_rules_property_id
 
 -- Identity Resolution: the blocking index, review queue, rejections and merge audit.
 
+-- No surrogate key: the natural key already identifies a row, and on the largest table in
+-- the system an unreferenced identifier costs a column and an index per row. SQLite has no
+-- partitioning, so the PostgreSQL two-level partitioning of this table has
+-- no counterpart here; the inbuilt datasource is not the one that reaches that scale.
 CREATE TABLE IF NOT EXISTS blocking_keys
 (
-    key_id         VARCHAR(255) PRIMARY KEY,
     profile_id     VARCHAR(255) NOT NULL REFERENCES profiles (profile_id) ON DELETE CASCADE,
     org_handle     VARCHAR(255) NOT NULL,
     attribute_name VARCHAR(255) NOT NULL, -- Rule property name (e.g. "identity_attributes.emailaddress")
     key_value      VARCHAR(512) NOT NULL, -- Normalized blocking key
-    CONSTRAINT uq_blocking_key UNIQUE (org_handle, attribute_name, key_value, profile_id)
+    PRIMARY KEY (org_handle, attribute_name, key_value, profile_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_blocking_keys_profile ON blocking_keys (profile_id);
+CREATE INDEX IF NOT EXISTS idx_blocking_keys_org_profile ON blocking_keys (org_handle, profile_id);
 
 CREATE TABLE IF NOT EXISTS review_tasks
 (

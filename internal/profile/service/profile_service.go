@@ -1084,7 +1084,7 @@ func (ps *ProfilesService) DeleteProfile(ctx context.Context, ProfileId string) 
 
 	// Drop the resolution index entries first. They are not reached by any cascade, so a
 	// profile left indexed keeps surfacing as a merge candidate after deletion.
-	if err := irStore.DeleteBlockingKeys(ctx, ProfileId); err != nil {
+	if err := irStore.DeleteBlockingKeys(ctx, profile.OrgHandle, ProfileId); err != nil {
 		logger.Warn(fmt.Sprintf("DeleteProfile: failed to remove blocking keys for '%s'", ProfileId),
 			log.Error(err))
 	}

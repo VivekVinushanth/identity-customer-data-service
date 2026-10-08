@@ -659,6 +659,15 @@ components:
           description: |
             What kind of value the attribute holds. Determines which comparison is applied
             and which blocking keys are indexed.
+
+            Optional. Omitted, it defaults to `PRIMITIVE_EXACT`, which is how a rule written
+            before typed matching is read. It is **required when `unification_method` is
+            `fuzzy`**, because it selects how two values are compared and there is nothing
+            sensible to assume.
+
+            It still shapes behaviour under `deterministic`: `DATE` and `UNIQUE_ID` are
+            normalized before comparing, so a date written two ways still matches, and the
+            type seeds the evidence strengths.
           enum: [PRIMITIVE_EXACT, FUZZY_STRING, NAME, EMAIL, PHONE, LOCATION, DATE, UNIQUE_ID]
           example: "EMAIL"
         unification_method:
@@ -667,6 +676,8 @@ components:
             Whether this rule matches on exact equality or tolerates variation. Rules of
             both kinds are evaluated side by side within a single comparison. Only
             FUZZY_STRING, NAME, EMAIL, PHONE and LOCATION support `fuzzy`.
+
+            Optional. Omitted, it defaults to `deterministic`.
           enum: [deterministic, fuzzy]
           example: "deterministic"
         match_strength:

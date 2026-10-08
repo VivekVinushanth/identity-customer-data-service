@@ -24,14 +24,32 @@ import (
 
 // BlockingKey is one index entry for a profile attribute value.
 //
-// IsFuzzy distinguishes the exact-normalized key from the recall-widening keys
-// (LSH bands, phonetic codes, phone suffixes) derived from the same value. It is
-// an in-memory hint used to query the two groups separately during candidate
-// search; it is not persisted.
+// KeyKind separates the key kinds derived from one value. Candidate lookup queries each
+// kind on its own, because they do not share a selectivity: a phonetic code deliberately
+// covers every spelling variant of a name, while each spelling produces its own LSH bands.
+// Grouping them into one lookup lets the broader kind exhaust the candidate cap and
+// discard the narrower kind's keys along with it. Not persisted — the stored index is
+// just a key, and which kind produced it is only needed while searching.
+type KeyKind uint8
+
+const (
+	// KeyKindExact is the normalized value itself.
+	KeyKindExact KeyKind = iota
+	// KeyKindPhonetic is a Double Metaphone code. The broadest kind: every spelling that
+	// sounds alike collapses onto it.
+	KeyKindPhonetic
+	// KeyKindLSH is one MinHash band hash, narrow by construction.
+	KeyKindLSH
+	// KeyKindSuffix is a phone number's trailing local digits.
+	KeyKindSuffix
+)
+
+// BlockingKey is one index entry for a profile: the attribute it came from, the key itself,
+// and the kind of key it is.
 type BlockingKey struct {
 	AttributeName string
 	KeyValue      string
-	IsFuzzy       bool
+	Kind          KeyKind
 }
 
 type ProfileData struct {

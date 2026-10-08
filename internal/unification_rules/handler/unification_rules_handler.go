@@ -88,6 +88,35 @@ func (urh *UnificationRulesHandler) AddUnificationRule(w http.ResponseWriter, r 
 		return
 	}
 
+	// A rule that says nothing about how it matches is an exact match on a plain value, which
+	// is how every rule written before typed matching is read. Requiring both fields would
+	// make the simple case harder than it was, and would break a client that predates them.
+	if ruleInRequest.UnificationMethod == "" {
+		ruleInRequest.UnificationMethod = constants.UnificationMethodDeterministic
+	}
+
+	// The type is only load-bearing when matching is approximate: it picks the algorithm, and
+	// not every kind of value has one. Asking for it then is asking for something the server
+	// genuinely cannot infer. Under exact matching it still shapes behaviour — dates and
+	// identifiers are normalized before comparing, and it seeds the evidence strengths — but a
+	// caller that omits it is choosing the same default the engine has always applied.
+	if ruleInRequest.AttributeType == "" {
+		if ruleInRequest.UnificationMethod == constants.UnificationMethodFuzzy {
+			clientError := errors2.NewClientError(errors2.ErrorMessage{
+				Code:    errors2.BAD_REQUEST.Code,
+				Message: errors2.BAD_REQUEST.Message,
+				Description: "attribute_type is required when unification_method is 'fuzzy', because it " +
+					"selects how two values are compared. Allowed values for fuzzy matching: " +
+					"FUZZY_STRING, NAME, EMAIL, PHONE, LOCATION.",
+			}, http.StatusBadRequest)
+			utils.WriteErrorResponse(w, clientError)
+
+			return
+		}
+
+		ruleInRequest.AttributeType = constants.AttributeTypePrimitiveExact
+	}
+
 	// Validate AttributeType.
 	if !constants.AllowedAttributeTypes[ruleInRequest.AttributeType] {
 		clientError := errors2.NewClientError(errors2.ErrorMessage{
@@ -220,8 +249,12 @@ func (urh *UnificationRulesHandler) GetUnificationRules(w http.ResponseWriter, r
 			IsActive:          rule.IsActive,
 			AttributeType:     rule.AttributeType,
 			UnificationMethod: rule.UnificationMethod,
-			MatchStrength:     rule.MatchStrength,
-			MismatchStrength:  rule.MismatchStrength,
+			// Strengths are stored only when an operator overrides them, so the column is
+			// usually empty and the engine derives from attribute_type on every read. The
+			// list has to derive too, or it reports nothing where the scorer is applying a
+			// real value — and reports it differently from every other endpoint.
+			MatchStrength:    effectiveStrength(rule.MatchStrength, constants.DefaultMatchStrength, rule.AttributeType),
+			MismatchStrength: effectiveStrength(rule.MismatchStrength, constants.DefaultMismatchStrength, rule.AttributeType),
 		}
 		rulesResponse = append(rulesResponse, tempRule)
 	}

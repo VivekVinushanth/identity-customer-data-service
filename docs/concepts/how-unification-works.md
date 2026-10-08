@@ -30,7 +30,7 @@ Profile created / updated
 
 ## Step 1 — System userId match
 
-If the incoming profile has a non-empty `userId`, CDS checks all existing master profiles for the same org. If any master profile has the same `userId`, the two profiles are merged immediately — no unification rule is required.
+If the incoming profile has a non-empty `userId`, CDS searches for a master profile with the same user ID in the organization. If one is found, the profiles are merged without evaluating unification rules.
 
 This is a system-level invariant. It fires before any rules are evaluated and cannot be disabled.
 
@@ -68,10 +68,15 @@ A deterministic rule writes the exact key and nothing else — LSH bands and pho
 would only gather values it can never score above zero. `DATE` and `UNIQUE_ID` normalise
 before keying because their matchers do, so `2026-01-02` and `Jan 2, 2026` meet.
 
-Keys are looked up grouped by attribute **and** by kind, exact before fuzzy, each group
-capped at 100 distinct profiles. A group matching more than that is skipped and logged: a
-value that common identifies nobody. The two kinds are queried separately so a crowded LSH
-band cannot push the result past the cap and take the exact-match key down with it.
+Keys are looked up grouped by attribute **and** by key kind — exact, phonetic, LSH band,
+phone suffix — narrowest kind first, each group capped at 100 distinct profiles. A group
+matching more than that is skipped and logged: a value that common identifies nobody.
+
+Each kind is queried separately because they do not share a selectivity. A phonetic code
+deliberately covers every spelling that sounds alike, while each spelling produces its own
+LSH bands, so for a common name the phonetic code saturates long before any band does.
+Sharing one lookup would let it exhaust the cap and discard the bands with it, losing
+exactly the typo matches they exist to find.
 
 ---
 
@@ -164,6 +169,14 @@ Caps only ever downgrade `AUTO_MERGE` to `MANUAL_REVIEW`. They never suppress a 
 | below that | `UNIQUE` — no action |
 
 `AUTO_MERGE` additionally requires `auto_merge_enabled` on the org's admin config.
+
+A merge records the name of the rule that **decided** it, which is not always the first rule
+that agreed. With `deterministic_match_decisive` on, an exact match at any priority ends the
+evaluation, so a fuzzy rule ranked above it agreed without deciding anything; attributing the
+merge to that fuzzy rule would record a similarity match where an exact identifier was the
+cause. The reason follows the same order the scorer used: a unique identifier matching
+exactly as the primary signal, then a deterministic agreement where those are decisive, then
+the first agreement of any kind.
 
 Both thresholds are validated against each other, not only against 0 and 1: an organisation
 must keep `0.3 < manual_review_threshold <= auto_merge_threshold - 0.01`. The upper bound

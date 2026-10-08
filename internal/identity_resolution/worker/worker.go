@@ -75,7 +75,7 @@ func ResolveProfileAsync(ctx context.Context, profile profileModel.Profile) {
 		// An update can remove the last value a rule matched on. Returning without touching
 		// the index would leave the profile discoverable under its old keys, so it keeps
 		// matching on data it no longer has.
-		if err := irStore.DeleteBlockingKeys(ctx, freshProfile.ProfileId); err != nil {
+		if err := irStore.DeleteBlockingKeys(ctx, orgHandle, freshProfile.ProfileId); err != nil {
 			logger.Warn(fmt.Sprintf("AsyncWorker: failed to clear stale blocking keys for '%s'",
 				freshProfile.ProfileId), log.Error(err))
 		}
@@ -272,7 +272,7 @@ func ResolveProfileAsync(ctx context.Context, profile profileModel.Profile) {
 			// Attribute the merge to the rule that drove it, so the child reference
 			// records why rather than a generic "auto_merge".
 			mergeReason := constants.MergeReasonAutoMerge
-			if ruleName, found := urModel.PrimaryRuleName(sc.breakdown, rules, thresholds.ManualReview); found {
+			if ruleName, found := urModel.PrimaryRuleName(sc.breakdown, rules, thresholds.ManualReview, thresholds.DeterministicMatchDecisive); found {
 				mergeReason = ruleName
 			}
 
@@ -377,7 +377,7 @@ func ReindexAfterMerge(ctx context.Context, masterProfileID, triggerProfileId, o
 	mergedProfile profileModel.Profile) {
 	logger := log.GetLogger()
 
-	if err := irStore.DeleteBlockingKeys(ctx, triggerProfileId); err != nil {
+	if err := irStore.DeleteBlockingKeys(ctx, orgHandle, triggerProfileId); err != nil {
 		logger.Warn(fmt.Sprintf("ReindexAfterMerge: failed to delete trigger '%s' blocking keys", triggerProfileId),
 			log.Error(err))
 	}

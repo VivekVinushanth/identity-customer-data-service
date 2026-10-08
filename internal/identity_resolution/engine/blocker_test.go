@@ -26,41 +26,65 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
 )
 
-// TestFindCandidatesByIndexIsolatesFuzzyBucketSaturation guards the regression where a
-// crowded fuzzy bucket took the exact-match key down with it. Both key kinds used to share
-// one query, so an over-populated LSH band or phonetic code pushed the result past the cap
-// and the whole attribute returned nothing — silently losing exact duplicates.
-func TestFindCandidatesByIndexIsolatesFuzzyBucketSaturation(t *testing.T) {
+// TestFindCandidatesByIndexIsolatesSaturatedKeyKinds guards the regression where a crowded
+// bucket took other keys down with it. Every key kind used to share one lookup per
+// attribute, so an over-populated phonetic code pushed the result past the cap and the whole
+// attribute returned nothing — losing both the exact duplicates and the LSH bands.
+//
+// The phonetic code is the kind that saturates first: it covers every spelling that sounds
+// alike, where each individual spelling produces its own bands. So it has to be looked up
+// apart from the bands, not merely apart from the exact key.
+func TestFindCandidatesByIndexIsolatesSaturatedKeyKinds(t *testing.T) {
 	if err := log.Init("error"); err != nil {
 		t.Fatalf("init logger: %v", err)
 	}
 
 	keys := []model.BlockingKey{
 		{AttributeName: "traits.name", KeyValue: "john smith"},
-		{AttributeName: "traits.name", KeyValue: "lsh:deadbeef", IsFuzzy: true},
-		{AttributeName: "traits.name", KeyValue: "JN SM0", IsFuzzy: true},
+		{AttributeName: "traits.name", KeyValue: "lsh:deadbeef", Kind: model.KeyKindLSH},
+		{AttributeName: "traits.name", KeyValue: "lsh:feedface", Kind: model.KeyKindLSH},
+		{AttributeName: "traits.name", KeyValue: "JN SM0", Kind: model.KeyKindPhonetic},
 	}
 
-	var exactQueries, fuzzyQueries int
-	lookup := func(_, _ string, keyValues []string, _ string, maxResults int) ([]string, error) {
-		// The exact key is queried on its own; the fuzzy keys share the other query.
-		if len(keyValues) == 1 && keyValues[0] == "john smith" {
-			exactQueries++
+	queriedKinds := map[string]int{}
+	lookup := func(_, _ string, keyValues []string, _ string, _ int) ([]string, error) {
+		switch {
+		case len(keyValues) == 1 && keyValues[0] == "john smith":
+			queriedKinds["exact"]++
 			return []string{"profile-exact"}, nil
+		case len(keyValues) == 1 && keyValues[0] == "JN SM0":
+			// A common name: the phonetic bucket is saturated, and the store returns nil to
+			// signal "too common to be evidence".
+			queriedKinds["phonetic"]++
+			return nil, nil
+		default:
+			queriedKinds["lsh"]++
+			return []string{"profile-typo"}, nil
 		}
-		fuzzyQueries++
-		// Saturated bucket: the store returns nil to signal "too common to be evidence".
-		return nil, nil
 	}
 
 	got := FindCandidatesByIndex(keys, "acme", "self", lookup)
 
-	if exactQueries != 1 || fuzzyQueries != 1 {
-		t.Fatalf("expected exact and fuzzy keys queried separately, got exact=%d fuzzy=%d",
-			exactQueries, fuzzyQueries)
+	for _, kind := range []string{"exact", "phonetic", "lsh"} {
+		if queriedKinds[kind] != 1 {
+			t.Fatalf("each key kind must be looked up on its own; %s was queried %d times (all: %v)",
+				kind, queriedKinds[kind], queriedKinds)
+		}
 	}
-	if len(got) != 1 || got[0] != "profile-exact" {
-		t.Errorf("saturated fuzzy bucket suppressed the exact match: got %v", got)
+
+	// Both surviving kinds must contribute. The saturated phonetic code costs only its own
+	// recall, and in particular must not suppress the typo match the bands exist to find.
+	want := map[string]bool{"profile-exact": true, "profile-typo": true}
+	if len(got) != len(want) {
+		t.Fatalf("saturated phonetic bucket suppressed other kinds: got %v", got)
+	}
+	for _, id := range got {
+		if !want[id] {
+			t.Errorf("unexpected candidate %q", id)
+		}
+	}
+	if got[0] != "profile-exact" {
+		t.Errorf("the narrowest kind should head the candidate list, got %v", got)
 	}
 }
 
@@ -71,7 +95,7 @@ func TestFindCandidatesByIndexDeduplicatesAcrossGroups(t *testing.T) {
 
 	keys := []model.BlockingKey{
 		{AttributeName: "traits.name", KeyValue: "john smith"},
-		{AttributeName: "traits.name", KeyValue: "lsh:beef", IsFuzzy: true},
+		{AttributeName: "traits.name", KeyValue: "lsh:beef", Kind: model.KeyKindLSH},
 		{AttributeName: "identity_attributes.email", KeyValue: "j@acme.com"},
 	}
 	lookup := func(_, _ string, _ []string, _ string, _ int) ([]string, error) {
@@ -130,22 +154,33 @@ func TestGenerateBlockingKeysRespectsUnificationMethod(t *testing.T) {
 	if len(exactKeys) != 1 {
 		t.Errorf("deterministic rule should emit only the exact key, got %d: %v", len(exactKeys), exactKeys)
 	}
-	if exactKeys[0].IsFuzzy {
-		t.Errorf("the sole deterministic key must not be marked fuzzy")
+	if exactKeys[0].Kind != model.KeyKindExact {
+		t.Errorf("the sole deterministic key must be the exact key, got kind %d", exactKeys[0].Kind)
 	}
 	if len(fuzzyKeys) <= 1 {
 		t.Errorf("fuzzy rule should emit recall-widening keys, got %d", len(fuzzyKeys))
 	}
 
-	var taggedFuzzy int
+	var exactCount, phoneticCount, lshCount int
 	for _, k := range fuzzyKeys {
-		if k.IsFuzzy {
-			taggedFuzzy++
+		switch k.Kind {
+		case model.KeyKindExact:
+			exactCount++
+		case model.KeyKindPhonetic:
+			phoneticCount++
+		case model.KeyKindLSH:
+			lshCount++
 		}
 	}
-	if taggedFuzzy != len(fuzzyKeys)-1 {
-		t.Errorf("exactly one key should be the exact key; %d of %d tagged fuzzy",
-			taggedFuzzy, len(fuzzyKeys))
+	if exactCount != 1 {
+		t.Errorf("a fuzzy rule should emit exactly one exact key, got %d", exactCount)
+	}
+	// Phonetic and LSH keys must be distinguishable, because they are looked up separately:
+	// a phonetic code covers every spelling that sounds alike and saturates long before a
+	// band does, and sharing a lookup would take the bands down with it.
+	if phoneticCount == 0 || lshCount == 0 {
+		t.Errorf("a fuzzy NAME rule should emit both phonetic and LSH keys, got %d phonetic and %d LSH",
+			phoneticCount, lshCount)
 	}
 }
 
