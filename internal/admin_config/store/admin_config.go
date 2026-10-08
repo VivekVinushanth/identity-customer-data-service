@@ -19,9 +19,10 @@
 package store
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+
 	model "github.com/wso2/identity-customer-data-service/internal/admin_config/model"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/provider"
@@ -30,7 +31,7 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
 )
 
-func GetAdminConfig(ctx context.Context, orgHandle string) (*model.AdminConfig, error) {
+func GetAdminConfig(orgHandle string) (*model.AdminConfig, error) {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -45,8 +46,8 @@ func GetAdminConfig(ctx context.Context, orgHandle string) (*model.AdminConfig, 
 	}
 	defer dbClient.Close()
 
-	query := scripts.GetOrgConfigurations
-	results, err := dbClient.ExecuteQueryContext(ctx, query, orgHandle)
+	query := scripts.GetOrgConfigurations[provider.NewDBProvider().GetDBType()]
+	results, err := dbClient.ExecuteQuery(query, orgHandle)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to execute query for fetching configurations for organization: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
@@ -89,6 +90,16 @@ func GetAdminConfig(ctx context.Context, orgHandle string) (*model.AdminConfig, 
 			if err := json.Unmarshal([]byte(value), &apps); err == nil {
 				config.SystemApplications = apps
 			}
+		case constants.ConfigAutoMergeEnabled:
+			config.AutoMergeEnabled = value == "true"
+		case constants.ConfigAutoMergeThreshold:
+			if v, err := strconv.ParseFloat(value, 64); err == nil && v > 0 && v <= 1 {
+				config.AutoMergeThreshold = v
+			}
+		case constants.ConfigManualReviewThreshold:
+			if v, err := strconv.ParseFloat(value, 64); err == nil && v > 0 && v <= 1 {
+				config.ManualReviewThreshold = v
+			}
 		}
 	}
 
@@ -96,7 +107,7 @@ func GetAdminConfig(ctx context.Context, orgHandle string) (*model.AdminConfig, 
 }
 
 // UpdateAdminConfig updates organization-level admin configuration (e.g., CDS enablement, schema sync flags).
-func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle string) error {
+func UpdateAdminConfig(config model.AdminConfig, orgHandle string) error {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -111,7 +122,7 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 	}
 	defer dbClient.Close()
 
-	tx, err := dbClient.BeginTxContext(ctx)
+	tx, err := dbClient.BeginTx()
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to begin transaction for updating configurations for organization: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
@@ -122,13 +133,13 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 		}, err)
 	}
 
-	query := scripts.UpdateOrgConfiguration
+	query := scripts.UpdateOrgConfiguration[provider.NewDBProvider().GetDBType()]
 
 	cdsEnabledValue := "false"
 	if config.CDSEnabled {
 		cdsEnabledValue = "true"
 	}
-	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigCDSEnabled, cdsEnabledValue)
+	_, err = tx.Exec(query, orgHandle, constants.ConfigCDSEnabled, cdsEnabledValue)
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to update cds_enabled for organization: %s", orgHandle)
@@ -144,7 +155,7 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 	if config.InitialSchemaSyncDone {
 		schemaSyncValue = "true"
 	}
-	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigInitialSchemaSyncDone, schemaSyncValue)
+	_, err = tx.Exec(query, orgHandle, constants.ConfigInitialSchemaSyncDone, schemaSyncValue)
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to update initial_schema_sync_done for organization: %s", orgHandle)
@@ -167,7 +178,7 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 			Description: errorMsg,
 		}, err)
 	}
-	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigSystemApplications, string(systemAppsValue))
+	_, err = tx.Exec(query, orgHandle, constants.ConfigSystemApplications, string(systemAppsValue))
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to update system_applications for organization: %s", orgHandle)
@@ -180,11 +191,51 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 		}, err)
 	}
 
+	autoMergeEnabledValue := "false"
+	if config.AutoMergeEnabled {
+		autoMergeEnabledValue = "true"
+	}
+	_, err = tx.Exec(query, orgHandle, constants.ConfigAutoMergeEnabled, autoMergeEnabledValue)
+	if err != nil {
+		_ = tx.Rollback()
+		errorMsg := fmt.Sprintf("Failed to update auto_merge_enabled for organization: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.UPDATE_ADMIN_CONFIG.Code,
+			Message:     errors2.UPDATE_ADMIN_CONFIG.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	_, err = tx.Exec(query, orgHandle, constants.ConfigAutoMergeThreshold, strconv.FormatFloat(config.AutoMergeThreshold, 'f', -1, 64))
+	if err != nil {
+		_ = tx.Rollback()
+		errorMsg := fmt.Sprintf("Failed to update auto_merge_threshold for organization: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.UPDATE_ADMIN_CONFIG.Code,
+			Message:     errors2.UPDATE_ADMIN_CONFIG.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	_, err = tx.Exec(query, orgHandle, constants.ConfigManualReviewThreshold, strconv.FormatFloat(config.ManualReviewThreshold, 'f', -1, 64))
+	if err != nil {
+		_ = tx.Rollback()
+		errorMsg := fmt.Sprintf("Failed to update manual_review_threshold for organization: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.UPDATE_ADMIN_CONFIG.Code,
+			Message:     errors2.UPDATE_ADMIN_CONFIG.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
 	return tx.Commit()
 }
 
 // UpdateInitialSchemaSyncConfig updates organization-level admin configuration (e.g., CDS enablement, schema sync flags).
-func UpdateInitialSchemaSyncConfig(ctx context.Context, state bool, orgHandle string) error {
+func UpdateInitialSchemaSyncConfig(state bool, orgHandle string) error {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -199,7 +250,7 @@ func UpdateInitialSchemaSyncConfig(ctx context.Context, state bool, orgHandle st
 	}
 	defer dbClient.Close()
 
-	tx, err := dbClient.BeginTxContext(ctx)
+	tx, err := dbClient.BeginTx()
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to begin transaction for updating configurations for organization: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
@@ -215,8 +266,8 @@ func UpdateInitialSchemaSyncConfig(ctx context.Context, state bool, orgHandle st
 		stateValue = "true"
 	}
 
-	query := scripts.UpdateInitialSchemaSyncDoneConfig
-	_, err = tx.ExecContext(ctx, query, orgHandle, stateValue)
+	query := scripts.UpdateInitialSchemaSyncDoneConfig[provider.NewDBProvider().GetDBType()]
+	_, err = tx.Exec(query, orgHandle, stateValue)
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to execute update for configurations for organization: %s", orgHandle)

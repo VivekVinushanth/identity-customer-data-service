@@ -46,7 +46,6 @@ spec:
       annotations:
         checksum.cds.conf: {{ include (print $.Template.BasePath "/cds-config.yaml") . | sha256sum }}
     spec:
-      terminationGracePeriodSeconds: {{ .Values.cloud.deployment.cds.terminationGracePeriodSeconds }}
       automountServiceAccountToken: false
       securityContext:
         runAsUser: 10001
@@ -86,7 +85,6 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: {{ .Values.cloud.deployment.cds.readinessProbe.initialDelaySeconds }}
             periodSeconds: {{ .Values.cloud.deployment.cds.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.cloud.deployment.cds.readinessProbe.timeoutSeconds }}
           imagePullPolicy: {{ .Values.cloud.deployment.cds.imagePullPolicy }}
           resources:
             requests:

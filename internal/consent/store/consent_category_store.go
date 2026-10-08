@@ -18,12 +18,11 @@
 package store
 
 import (
-	"context"
 	"fmt"
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 	model "github.com/wso2/identity-customer-data-service/internal/consent/model"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
-	"github.com/wso2/identity-customer-data-service/internal/system/database/client"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/provider"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/scripts"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
@@ -32,7 +31,7 @@ import (
 )
 
 // AddConsentCategory inserts a new consent category into the database.
-func AddConsentCategory(ctx context.Context, category model.ConsentCategory) error {
+func AddConsentCategory(category model.ConsentCategory) error {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -46,9 +45,8 @@ func AddConsentCategory(ctx context.Context, category model.ConsentCategory) err
 		}, err)
 	}
 	defer dbClient.Close()
-	dbType := dbClient.DBType()
-	query := scripts.InsertConsentCategory
-	tx, err := dbClient.BeginTxContext(ctx)
+	query := scripts.InsertConsentCategory[provider.NewDBProvider().GetDBType()]
+	tx, err := dbClient.BeginTx()
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to begin transaction for inserting consent category: %s", category.CategoryIdentifier)
 		logger.Debug(errorMsg, log.Error(err))
@@ -59,8 +57,7 @@ func AddConsentCategory(ctx context.Context, category model.ConsentCategory) err
 		}, err)
 		return serverError
 	}
-	_, err = tx.ExecContext(ctx, query, category.CategoryName, category.CategoryIdentifier, category.OrgHandle, category.Purpose,
-		scripts.EncodeStringArray(dbType, category.Destinations), category.IsMandatory)
+	_, err = tx.Exec(query, category.CategoryName, category.CategoryIdentifier, category.OrgHandle, category.Purpose, pq.Array(category.Destinations), category.IsMandatory)
 	if err != nil {
 		errRollback := tx.Rollback()
 		if errRollback != nil {
@@ -81,9 +78,9 @@ func AddConsentCategory(ctx context.Context, category model.ConsentCategory) err
 		}, err)
 	}
 
-	attrQuery := scripts.InsertConsentCategoryAttribute
+	attrQuery := scripts.InsertConsentCategoryAttribute[provider.NewDBProvider().GetDBType()]
 	for _, attr := range category.Attributes {
-		_, err = tx.ExecContext(ctx, attrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.ApplicationIdentifier)
+		_, err = tx.Exec(attrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.ApplicationIdentifier)
 		if err != nil {
 			_ = tx.Rollback()
 			errorMsg := fmt.Sprintf("Failed to insert attribute %s for consent category: %s", attr.AttributeName, category.CategoryIdentifier)
@@ -101,7 +98,7 @@ func AddConsentCategory(ctx context.Context, category model.ConsentCategory) err
 }
 
 // GetAllConsentCategories retrieves all consent categories from the database.
-func GetAllConsentCategories(ctx context.Context) ([]model.ConsentCategory, error) {
+func GetAllConsentCategories() ([]model.ConsentCategory, error) {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -116,8 +113,8 @@ func GetAllConsentCategories(ctx context.Context) ([]model.ConsentCategory, erro
 	}
 	defer dbClient.Close()
 
-	query := scripts.GetAllConsentCategories
-	results, err := dbClient.ExecuteQueryContext(ctx, query)
+	query := scripts.GetAllConsentCategories[provider.NewDBProvider().GetDBType()]
+	results, err := dbClient.ExecuteQuery(query)
 	if err != nil {
 		errorMsg := "Failed to execute query for fetching consent categories."
 		logger.Debug(errorMsg, log.Error(err))
@@ -152,13 +149,13 @@ func GetAllConsentCategories(ctx context.Context) ([]model.ConsentCategory, erro
 			regularIds = append(regularIds, c.CategoryIdentifier)
 		}
 	}
-	attrsByCategory, err := getAttributesByCategoryIds(ctx, dbClient, regularIds)
+	attrsByCategory, err := getAttributesByCategoryIds(dbClient, regularIds)
 	if err != nil {
 		return nil, err
 	}
 	for i := range categories {
 		if categories[i].IsMandatory {
-			attrs, err := resolveMandatoryAttributes(ctx, dbClient, categories[i].OrgHandle)
+			attrs, err := resolveMandatoryAttributes(dbClient, categories[i].OrgHandle)
 			if err != nil {
 				return nil, err
 			}
@@ -173,7 +170,7 @@ func GetAllConsentCategories(ctx context.Context) ([]model.ConsentCategory, erro
 }
 
 // GetConsentCategoryByID retrieves a consent category by its ID.
-func GetConsentCategoryByID(ctx context.Context, id string) (*model.ConsentCategory, error) {
+func GetConsentCategoryByID(id string) (*model.ConsentCategory, error) {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -188,8 +185,8 @@ func GetConsentCategoryByID(ctx context.Context, id string) (*model.ConsentCateg
 	}
 	defer dbClient.Close()
 
-	query := scripts.GetConsentCategoryById
-	results, err := dbClient.ExecuteQueryContext(ctx, query, id)
+	query := scripts.GetConsentCategoryById[provider.NewDBProvider().GetDBType()]
+	results, err := dbClient.ExecuteQuery(query, id)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to execute query for fetching consent category: %s", id)
 		logger.Debug(errorMsg, log.Error(err))
@@ -215,13 +212,13 @@ func GetConsentCategoryByID(ctx context.Context, id string) (*model.ConsentCateg
 	}
 
 	if category.IsMandatory {
-		attrs, err := resolveMandatoryAttributes(ctx, dbClient, category.OrgHandle)
+		attrs, err := resolveMandatoryAttributes(dbClient, category.OrgHandle)
 		if err != nil {
 			return nil, err
 		}
 		category.Attributes = attrs
 	} else {
-		attrsByCategory, err := getAttributesByCategoryIds(ctx, dbClient, []string{id})
+		attrsByCategory, err := getAttributesByCategoryIds(dbClient, []string{id})
 		if err != nil {
 			return nil, err
 		}
@@ -232,7 +229,7 @@ func GetConsentCategoryByID(ctx context.Context, id string) (*model.ConsentCateg
 }
 
 // GetConsentCategoryByName retrieves a consent category by name within an org.
-func GetConsentCategoryByName(ctx context.Context, name string, orgHandle string) (*model.ConsentCategory, error) {
+func GetConsentCategoryByName(name string, orgHandle string) (*model.ConsentCategory, error) {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -247,8 +244,8 @@ func GetConsentCategoryByName(ctx context.Context, name string, orgHandle string
 	}
 	defer dbClient.Close()
 
-	query := scripts.GetConsentCategoryByName
-	results, err := dbClient.ExecuteQueryContext(ctx, query, name, orgHandle)
+	query := scripts.GetConsentCategoryByName[provider.NewDBProvider().GetDBType()]
+	results, err := dbClient.ExecuteQuery(query, name, orgHandle)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to execute query for fetching consent category: %s", name)
 		logger.Debug(errorMsg, log.Error(err))
@@ -276,7 +273,7 @@ func GetConsentCategoryByName(ctx context.Context, name string, orgHandle string
 }
 
 // UpdateConsentCategory updates an existing consent category in the database.
-func UpdateConsentCategory(ctx context.Context, category model.ConsentCategory) error {
+func UpdateConsentCategory(category model.ConsentCategory) error {
 
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
@@ -290,7 +287,7 @@ func UpdateConsentCategory(ctx context.Context, category model.ConsentCategory) 
 		}, err)
 	}
 	defer dbClient.Close()
-	tx, err := dbClient.BeginTxContext(ctx)
+	tx, err := dbClient.BeginTx()
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to begin transaction for updating consent category: %s",
 			category.CategoryIdentifier)
@@ -303,10 +300,8 @@ func UpdateConsentCategory(ctx context.Context, category model.ConsentCategory) 
 		return serverError
 	}
 
-	dbType := dbClient.DBType()
-	query := scripts.UpdateConsentCategory
-	_, err = tx.ExecContext(ctx, query, category.CategoryName, category.Purpose,
-		scripts.EncodeStringArray(dbType, category.Destinations), category.CategoryIdentifier)
+	query := scripts.UpdateConsentCategory[provider.NewDBProvider().GetDBType()]
+	_, err = tx.Exec(query, category.CategoryName, category.Purpose, pq.Array(category.Destinations), category.CategoryIdentifier)
 	if err != nil {
 		_ = tx.Rollback()
 		logger.Debug("Failed to update consent category", log.Error(err))
@@ -317,8 +312,8 @@ func UpdateConsentCategory(ctx context.Context, category model.ConsentCategory) 
 		}, err)
 	}
 
-	deleteAttrQuery := scripts.DeleteConsentCategoryAttributesByCategoryId
-	_, err = tx.ExecContext(ctx, deleteAttrQuery, category.CategoryIdentifier)
+	deleteAttrQuery := scripts.DeleteConsentCategoryAttributesByCategoryId[provider.NewDBProvider().GetDBType()]
+	_, err = tx.Exec(deleteAttrQuery, category.CategoryIdentifier)
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to delete attributes for consent category: %s", category.CategoryIdentifier)
@@ -330,9 +325,9 @@ func UpdateConsentCategory(ctx context.Context, category model.ConsentCategory) 
 		}, err)
 	}
 
-	insertAttrQuery := scripts.InsertConsentCategoryAttribute
+	insertAttrQuery := scripts.InsertConsentCategoryAttribute[provider.NewDBProvider().GetDBType()]
 	for _, attr := range category.Attributes {
-		_, err = tx.ExecContext(ctx, insertAttrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.ApplicationIdentifier)
+		_, err = tx.Exec(insertAttrQuery, category.CategoryIdentifier, attr.Scope, attr.AttributeName, attr.AttributeId, attr.ApplicationIdentifier)
 		if err != nil {
 			_ = tx.Rollback()
 			errorMsg := fmt.Sprintf("Failed to insert attribute %s for consent category: %s", attr.AttributeName, category.CategoryIdentifier)
@@ -348,7 +343,8 @@ func UpdateConsentCategory(ctx context.Context, category model.ConsentCategory) 
 	return tx.Commit()
 }
 
-func DeleteConsentCategory(ctx context.Context, categoryId string) error {
+
+func DeleteConsentCategory(categoryId string) error {
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
 	if err != nil {
@@ -363,7 +359,7 @@ func DeleteConsentCategory(ctx context.Context, categoryId string) error {
 	}
 	defer dbClient.Close()
 
-	tx, err := dbClient.BeginTxContext(ctx)
+	tx, err := dbClient.BeginTx()
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to begin transaction for deleting consent category: %s", categoryId)
 		logger.Debug(errorMsg, log.Error(err))
@@ -375,8 +371,8 @@ func DeleteConsentCategory(ctx context.Context, categoryId string) error {
 		return serverError
 	}
 
-	query := scripts.DeleteConsentCategory
-	_, err = tx.ExecContext(ctx, query, categoryId)
+	query := scripts.DeleteConsentCategory[provider.NewDBProvider().GetDBType()]
+	_, err = tx.Exec(query, categoryId)
 	if err != nil {
 		errMsg := fmt.Sprintf("Failed to execute query for deleting consent category: %s", categoryId)
 		logger.Debug(errMsg, log.Error(err))
@@ -392,7 +388,7 @@ func DeleteConsentCategory(ctx context.Context, categoryId string) error {
 // SeedDefaultIdentityDataCategory creates the mandatory "Identity Data" consent category for the org.
 // Attributes are not stored in consent_category_attributes — they are resolved dynamically from
 // profile_schema at query time so they stay in sync with schema changes automatically.
-func SeedDefaultIdentityDataCategory(ctx context.Context, orgHandle string) error {
+func SeedDefaultIdentityDataCategory(orgHandle string) error {
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
 	if err != nil {
@@ -406,10 +402,8 @@ func SeedDefaultIdentityDataCategory(ctx context.Context, orgHandle string) erro
 	}
 	defer dbClient.Close()
 
-	dbType := dbClient.DBType()
-	upsertQuery := scripts.UpsertDefaultIdentityDataCategory
-	_, err = dbClient.ExecuteQueryContext(ctx, upsertQuery, constants.DefaultIdentityDataCategoryName, uuid.New().String(), orgHandle,
-		constants.DefaultIdentityDataCategoryPurpose, scripts.EncodeStringArray(dbType, []string{}))
+	upsertQuery := scripts.UpsertDefaultIdentityDataCategory[provider.NewDBProvider().GetDBType()]
+	_, err = dbClient.ExecuteQuery(upsertQuery, constants.DefaultIdentityDataCategoryName, uuid.New().String(), orgHandle, constants.DefaultIdentityDataCategoryPurpose, pq.Array([]string{}))
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to upsert identity data category for org: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
@@ -427,10 +421,9 @@ func SeedDefaultIdentityDataCategory(ctx context.Context, orgHandle string) erro
 // resolveMandatoryAttributes fetches the attributes for a mandatory consent category live from
 // profile_schema (identity_attributes scope). This mirrors what the consent filter does at
 // query time, so the GET response always reflects the current schema state.
-func resolveMandatoryAttributes(ctx context.Context, dbClient client.DBClientInterface, orgHandle string) (
-	[]model.ConsentAttribute, error) {
-	query := scripts.GetProfileSchemaAttributeByScope
-	rows, err := dbClient.ExecuteQueryContext(ctx, query, orgHandle, constants.IdentityAttributes)
+func resolveMandatoryAttributes(dbClient interface{ ExecuteQuery(string, ...interface{}) ([]map[string]interface{}, error) }, orgHandle string) ([]model.ConsentAttribute, error) {
+	query := scripts.GetProfileSchemaAttributeByScope[provider.NewDBProvider().GetDBType()]
+	rows, err := dbClient.ExecuteQuery(query, orgHandle, constants.IdentityAttributes)
 	if err != nil {
 		return nil, err
 	}
@@ -445,7 +438,7 @@ func resolveMandatoryAttributes(ctx context.Context, dbClient client.DBClientInt
 }
 
 // GetMandatoryConsentCategoryIds returns the identifiers of all mandatory consent categories for an org.
-func GetMandatoryConsentCategoryIds(ctx context.Context, orgHandle string) ([]string, error) {
+func GetMandatoryConsentCategoryIds(orgHandle string) ([]string, error) {
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
 	if err != nil {
@@ -459,8 +452,8 @@ func GetMandatoryConsentCategoryIds(ctx context.Context, orgHandle string) ([]st
 	}
 	defer dbClient.Close()
 
-	query := scripts.GetMandatoryConsentCategoryIdsByOrg
-	results, err := dbClient.ExecuteQueryContext(ctx, query, orgHandle)
+	query := scripts.GetMandatoryConsentCategoryIdsByOrg[provider.NewDBProvider().GetDBType()]
+	results, err := dbClient.ExecuteQuery(query, orgHandle)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to fetch mandatory category ids for org: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
@@ -481,8 +474,7 @@ func GetMandatoryConsentCategoryIds(ctx context.Context, orgHandle string) ([]st
 // GetConsentedCategoryAttributesByProfileId returns the allowed attribute sets for each
 // consented category. It only returns attributes for categories the profile has actively consented to.
 // Mandatory categories are always included regardless of profile consent records.
-func GetConsentedCategoryAttributesByProfileId(ctx context.Context,
-	profileId string, orgHandle string, categoryIds []string) (map[string][]model.ConsentAttribute, error) {
+func GetConsentedCategoryAttributesByProfileId(profileId string, orgHandle string, categoryIds []string) (map[string][]model.ConsentAttribute, error) {
 	dbClient, err := provider.NewDBProvider().GetDBClient()
 	logger := log.GetLogger()
 	if err != nil {
@@ -497,8 +489,8 @@ func GetConsentedCategoryAttributesByProfileId(ctx context.Context,
 	defer dbClient.Close()
 
 	// Fetch which categories the profile has consented to (consent_status = true)
-	consentQuery := scripts.GetProfileConsentsByProfileId
-	consentResults, err := dbClient.ExecuteQueryContext(ctx, consentQuery, profileId)
+	consentQuery := scripts.GetProfileConsentsByProfileId[provider.NewDBProvider().GetDBType()]
+	consentResults, err := dbClient.ExecuteQuery(consentQuery, profileId)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to fetch consents for profile: %s", profileId)
 		logger.Debug(errorMsg, log.Error(err))
@@ -517,8 +509,8 @@ func GetConsentedCategoryAttributesByProfileId(ctx context.Context,
 	}
 
 	// Fetch mandatory category IDs for the org — always included regardless of profile consent records.
-	mandatoryQuery := scripts.GetMandatoryConsentCategoryIdsByOrg
-	mandatoryResults, err := dbClient.ExecuteQueryContext(ctx, mandatoryQuery, orgHandle)
+	mandatoryQuery := scripts.GetMandatoryConsentCategoryIdsByOrg[provider.NewDBProvider().GetDBType()]
+	mandatoryResults, err := dbClient.ExecuteQuery(mandatoryQuery, orgHandle)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to fetch mandatory category ids for org: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
@@ -557,8 +549,8 @@ func GetConsentedCategoryAttributesByProfileId(ctx context.Context,
 	// attribute via schema sync automatically updates what the mandatory "Identity Data"
 	// category covers — no reseeding or migration needed.
 	if len(mandatoryIds) > 0 {
-		schemaQuery := scripts.GetProfileSchemaAttributeByScope
-		schemaResults, err := dbClient.ExecuteQueryContext(ctx, schemaQuery, orgHandle, constants.IdentityAttributes)
+		schemaQuery := scripts.GetProfileSchemaAttributeByScope[provider.NewDBProvider().GetDBType()]
+		schemaResults, err := dbClient.ExecuteQuery(schemaQuery, orgHandle, constants.IdentityAttributes)
 		if err != nil {
 			errorMsg := fmt.Sprintf("Failed to fetch identity attributes from schema for org: %s", orgHandle)
 			logger.Debug(errorMsg, log.Error(err))
@@ -582,7 +574,7 @@ func GetConsentedCategoryAttributesByProfileId(ctx context.Context,
 
 	// For regular categories: fetch from consent_category_attributes as usual.
 	if len(regularIds) > 0 {
-		regularAttrs, err := getAttributesByCategoryIds(ctx, dbClient, regularIds)
+		regularAttrs, err := getAttributesByCategoryIds(dbClient, regularIds)
 		if err != nil {
 			return nil, err
 		}
@@ -596,8 +588,9 @@ func GetConsentedCategoryAttributesByProfileId(ctx context.Context,
 
 // getAttributesByCategoryIds is an internal helper that fetches attributes for a list of category IDs
 // using the provided db client (avoids opening a second connection).
-func getAttributesByCategoryIds(ctx context.Context, dbClient client.DBClientInterface, categoryIds []string) (
-	map[string][]model.ConsentAttribute, error) {
+func getAttributesByCategoryIds(dbClient interface {
+	ExecuteQuery(query string, args ...interface{}) ([]map[string]interface{}, error)
+}, categoryIds []string) (map[string][]model.ConsentAttribute, error) {
 	logger := log.GetLogger()
 
 	result := make(map[string][]model.ConsentAttribute)
@@ -611,9 +604,12 @@ func getAttributesByCategoryIds(ctx context.Context, dbClient client.DBClientInt
 		ids[i] = id
 		placeholders[i] = fmt.Sprintf("$%d", i+1)
 	}
-	inQuery := scripts.GetConsentCategoryAttributesByCategoryIds.Format(strings.Join(placeholders, ", "))
+	inQuery := fmt.Sprintf(
+		"SELECT category_id, scope, attribute_name, attribute_id, application_identifier FROM consent_category_attributes WHERE category_id IN (%s)",
+		strings.Join(placeholders, ", "),
+	)
 
-	rows, err := dbClient.ExecuteQueryContext(ctx, inQuery, ids...)
+	rows, err := dbClient.ExecuteQuery(inQuery, ids...)
 	if err != nil {
 		errorMsg := "Failed to fetch consent category attributes"
 		logger.Debug(errorMsg, log.Error(err))
@@ -647,8 +643,34 @@ func parseBool(raw interface{}) bool {
 	return false
 }
 
-// parseStringArray reads the destinations column, which holds a PostgreSQL
-// TEXT[] on PostgreSQL and a JSON array on the inbuilt database.
 func parseStringArray(raw interface{}) []string {
-	return scripts.DecodeStringArray(raw)
+	if raw == nil {
+		return nil
+	}
+
+	var rawStr string
+	switch v := raw.(type) {
+	case []byte:
+		rawStr = string(v)
+	case string:
+		rawStr = v
+	default:
+		return nil
+	}
+
+	rawStr = strings.Trim(rawStr, "{}")
+	if rawStr == "" {
+		return nil
+	}
+
+	items := strings.Split(rawStr, ",")
+	var result []string
+	for _, item := range items {
+		// Trim spaces and surrounding double quotes
+		clean := strings.TrimSpace(item)
+		clean = strings.Trim(clean, `"`)
+		result = append(result, clean)
+	}
+
+	return result
 }

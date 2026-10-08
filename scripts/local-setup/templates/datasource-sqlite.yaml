@@ -1,5 +1,0 @@
-
-datasource:
-  type: sqlite
-  sqlite:
-    path: "repository/database/cds.db"

@@ -51,13 +51,8 @@ jobs:
             exit 0
           fi
 
-          BRANCH="${{ github.event.workflow_run.head_branch }}"
-          echo "🔍 Released branch: $BRANCH"
-
-          if [ -z "$BRANCH" ]; then
-            echo "❌ ERROR: Could not resolve the released branch"
-            exit 1
-          fi
+          COMMIT_SHA="${{ github.event.workflow_run.head_sha }}"
+          echo "🔍 Workflow run commit SHA: $COMMIT_SHA"
 
           echo "📦 Fetching repository..."
           git clone --quiet https://github.com/${{ github.repository }} repo
@@ -65,17 +60,17 @@ jobs:
 
           # Must fetch tags
           git fetch --tags --force
-          git fetch --quiet origin "$BRANCH"
 
-          # The release builder commits the version bump and then tags it, so the
-          # release tag is the newest product tag reachable from the branch tip -
-          # not necessarily the commit the release run was dispatched against.
-          TAG=$(git describe --tags --abbrev=0 --match 'v[0-9]*' "origin/$BRANCH" 2>/dev/null || true)
+          # Tag lookup
+          TAG=$(git tag --points-at $COMMIT_SHA)
 
           if [ -z "$TAG" ]; then
-            echo "❌ ERROR: No product tag found on branch: $BRANCH"
+            echo "❌ ERROR: No tag found pointing to commit: $COMMIT_SHA"
             exit 1
           fi
+
+          # In case multiple tags exist, choose the first
+          TAG=$(echo "$TAG" | head -n 1)
 
           echo "🎯 Tag detected: $TAG"
           echo "TAG_NAME=$TAG" >> $GITHUB_OUTPUT

@@ -19,13 +19,11 @@
 package service
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
-	appProvider "github.com/wso2/identity-customer-data-service/internal/application/provider"
 	"github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
 	psstr "github.com/wso2/identity-customer-data-service/internal/profile_schema/store"
 	"github.com/wso2/identity-customer-data-service/internal/system/client"
@@ -37,21 +35,17 @@ import (
 )
 
 type ProfileSchemaServiceInterface interface {
-	GetProfileSchema(ctx context.Context, orgId string) (map[string]interface{}, error)
-	DeleteProfileSchema(ctx context.Context, orgId string) error
-	AddProfileSchemaAttributesForScope(ctx context.Context,
-		attrs []model.ProfileSchemaAttribute, scope, orgId string) ([]model.ProfileSchemaAttribute, error)
-	GetProfileSchemaAttributesByScope(ctx context.Context, orgId, scope string) (interface{}, error)
-	GetProfileSchemaAttributesByScopeAndFilter(ctx context.Context,
-		id, scope string, filters []string) (interface{}, error)
-	DeleteProfileSchemaAttributesByScope(ctx context.Context, orgId, scope string) error
-	GetProfileSchemaAttributeById(ctx context.Context, orgId, attributeId string) (model.ProfileSchemaAttribute, error)
-	GetProfileSchemaAttributeByName(ctx context.Context,
-		attributeName, orgId string) (*model.ProfileSchemaAttribute, error)
-	UpdateProfileSchemaAttributeById(ctx context.Context,
-		orgId, attributeId string, updates map[string]interface{}, scope string) error
-	DeleteProfileSchemaAttributeById(ctx context.Context, orgId, attributeId string) error
-	SyncProfileSchema(ctx context.Context, orgId string) error
+	GetProfileSchema(orgId string) (map[string]interface{}, error)
+	DeleteProfileSchema(orgId string) error
+	AddProfileSchemaAttributesForScope(attrs []model.ProfileSchemaAttribute, scope, orgId string) ([]model.ProfileSchemaAttribute, error)
+	GetProfileSchemaAttributesByScope(orgId, scope string) (interface{}, error)
+	GetProfileSchemaAttributesByScopeAndFilter(id, scope string, filters []string) (interface{}, error)
+	DeleteProfileSchemaAttributesByScope(orgId, scope string) error
+	GetProfileSchemaAttributeById(orgId, attributeId string) (model.ProfileSchemaAttribute, error)
+	GetProfileSchemaAttributeByName(attributeName, orgId string) (*model.ProfileSchemaAttribute, error)
+	UpdateProfileSchemaAttributeById(orgId, attributeId string, updates map[string]interface{}, scope string) error
+	DeleteProfileSchemaAttributeById(orgId, attributeId string) error
+	SyncProfileSchema(orgId string) error
 }
 
 // ProfileSchemaService is the default implementation of the ProfileSchemaServiceInterface.
@@ -64,12 +58,11 @@ func GetProfileSchemaService() ProfileSchemaServiceInterface {
 }
 
 // AddProfileSchemaAttributesForScope adds profile schema attributes to the specific scope.
-func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(ctx context.Context,
-	schemaAttributes []model.ProfileSchemaAttribute, scope, orgId string) ([]model.ProfileSchemaAttribute, error) {
+func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(schemaAttributes []model.ProfileSchemaAttribute, scope, orgId string) ([]model.ProfileSchemaAttribute, error) {
 
 	validAttrs := make([]model.ProfileSchemaAttribute, 0, len(schemaAttributes))
 	for _, attr := range schemaAttributes {
-		if err, isValid := s.validateSchemaAttribute(ctx, attr); isValid {
+		if err, isValid := s.validateSchemaAttribute(attr); isValid {
 			// Ensure the scope is valid
 			parts := strings.SplitN(attr.AttributeName, ".", 2)
 			scopeOfAttr := parts[0]
@@ -83,7 +76,7 @@ func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(ctx context.Co
 				return nil, clientError
 			}
 
-			existing, err := psstr.GetProfileSchemaAttributeByName(ctx, attr.OrgId, attr.AttributeName)
+			existing, err := psstr.GetProfileSchemaAttributeByName(attr.OrgId, attr.AttributeName)
 			if err != nil {
 				return nil, err
 			}
@@ -124,11 +117,10 @@ func (s *ProfileSchemaService) AddProfileSchemaAttributesForScope(ctx context.Co
 		}
 	}
 
-	return validAttrs, psstr.AddProfileSchemaAttributesForScope(ctx, validAttrs, scope, orgId)
+	return validAttrs, psstr.AddProfileSchemaAttributesForScope(validAttrs, scope, orgId)
 }
 
-func (s *ProfileSchemaService) validateSchemaAttribute(ctx context.Context,
-	attr model.ProfileSchemaAttribute) (error, bool) {
+func (s *ProfileSchemaService) validateSchemaAttribute(attr model.ProfileSchemaAttribute) (error, bool) {
 
 	parts := strings.Split(attr.AttributeName, ".")
 	logger := log.GetLogger()
@@ -172,7 +164,7 @@ func (s *ProfileSchemaService) validateSchemaAttribute(ctx context.Context,
 			return clientError, false
 		}
 
-		err, validApplicationIdentifier := validateApplicationIdentifierFn(ctx, attr.ApplicationIdentifier, attr.OrgId)
+		err, validApplicationIdentifier := validateApplicationIdentifierFn(attr.ApplicationIdentifier, attr.OrgId)
 		if err != nil {
 			return err, false
 		}
@@ -237,7 +229,7 @@ func (s *ProfileSchemaService) validateSchemaAttribute(ctx context.Context,
 				return clientError, false
 			}
 
-			subAttribute, err := s.GetProfileSchemaAttributeById(ctx, attr.OrgId, subAttr.AttributeId)
+			subAttribute, err := s.GetProfileSchemaAttributeById(attr.OrgId, subAttr.AttributeId)
 			if err != nil {
 				clientError := errors2.NewClientError(errors2.ErrorMessage{
 					Code:        errors2.INVALID_ATTRIBUTE.Code,
@@ -307,40 +299,29 @@ func (s *ProfileSchemaService) validateSchemaAttribute(ctx context.Context,
 
 var validateApplicationIdentifierFn = defaultValidateApplicationIdentifier
 
-// defaultValidateApplicationIdentifier validates the application identifier against the identity server.
-func defaultValidateApplicationIdentifier(ctx context.Context, appIdentifier, orgHandle string) (error, bool) {
-	if config.GetCDSRuntime().Config.UsesAppIDIdentifier() {
-		ok, err := appProvider.NewApplicationProvider().GetApplicationService().
-			ResolveAndRegisterApplication(ctx, appIdentifier, orgHandle)
-		if err != nil {
-			return err, false
-		}
-		return nil, ok
-	}
+func defaultValidateApplicationIdentifier(appID, orgHandle string) (error, bool) {
+	cfg := config.GetCDSRuntime().Config
+	identityClient := client.NewIdentityClient(cfg)
 
-	identityClient := client.NewIdentityClient(config.GetCDSRuntime().Config)
-	res, err := identityClient.FetchApplicationIdentifier(appIdentifier, orgHandle)
+	res, err := identityClient.FetchApplicationIdentifier(appID, orgHandle)
 	if err != nil {
 		return err, false
 	}
 	return nil, len(res.Applications) == 1
 }
 
-func (s *ProfileSchemaService) GetProfileSchemaAttributeById(ctx context.Context,
-	orgId, attributeId string) (model.ProfileSchemaAttribute, error) {
-	return psstr.GetProfileSchemaAttributeById(ctx, orgId, attributeId)
+func (s *ProfileSchemaService) GetProfileSchemaAttributeById(orgId, attributeId string) (model.ProfileSchemaAttribute, error) {
+	return psstr.GetProfileSchemaAttributeById(orgId, attributeId)
 }
 
-func (s *ProfileSchemaService) GetProfileSchemaAttributeByName(ctx context.Context,
-	attributeName, orgId string) (*model.ProfileSchemaAttribute, error) {
-	return psstr.GetProfileSchemaAttributeByName(ctx, orgId, attributeName)
+func (s *ProfileSchemaService) GetProfileSchemaAttributeByName(attributeName, orgId string) (*model.ProfileSchemaAttribute, error) {
+	return psstr.GetProfileSchemaAttributeByName(orgId, attributeName)
 }
 
 // GetProfileSchemaAttributesByScope retrieves profile schema attributes for a specific scope.
-func (s *ProfileSchemaService) GetProfileSchemaAttributesByScope(ctx context.Context,
-	orgId, scope string) (interface{}, error) {
+func (s *ProfileSchemaService) GetProfileSchemaAttributesByScope(orgId, scope string) (interface{}, error) {
 
-	schemaAttributes, err := psstr.GetProfileSchemaAttributesByScope(ctx, orgId, scope)
+	schemaAttributes, err := psstr.GetProfileSchemaAttributesByScope(orgId, scope)
 	if err != nil {
 		return nil, err
 	}
@@ -362,8 +343,7 @@ func (s *ProfileSchemaService) GetProfileSchemaAttributesByScope(ctx context.Con
 	return schemaAttributes, nil
 }
 
-func (s *ProfileSchemaService) UpdateProfileSchemaAttributeById(ctx context.Context,
-	orgId, attributeId string, updates map[string]interface{}, scope string) error {
+func (s *ProfileSchemaService) UpdateProfileSchemaAttributeById(orgId, attributeId string, updates map[string]interface{}, scope string) error {
 
 	if len(updates) == 0 {
 		return errors2.NewClientError(errors2.ErrorMessage{
@@ -372,7 +352,7 @@ func (s *ProfileSchemaService) UpdateProfileSchemaAttributeById(ctx context.Cont
 			Description: "No updates provided for the profile schema attribute",
 		}, http.StatusBadRequest)
 	}
-	attribute, err := s.GetProfileSchemaAttributeById(ctx, orgId, attributeId)
+	attribute, err := s.GetProfileSchemaAttributeById(orgId, attributeId)
 	if err != nil {
 		return err
 	}
@@ -461,7 +441,7 @@ func (s *ProfileSchemaService) UpdateProfileSchemaAttributeById(ctx context.Cont
 		}
 	}
 
-	err, isValid := s.validateSchemaAttribute(ctx, model.ProfileSchemaAttribute{
+	err, isValid := s.validateSchemaAttribute(model.ProfileSchemaAttribute{
 		OrgId:                 orgId,
 		AttributeId:           attributeId,
 		AttributeName:         updates["attribute_name"].(string),
@@ -484,13 +464,13 @@ func (s *ProfileSchemaService) UpdateProfileSchemaAttributeById(ctx context.Cont
 			Description: "Invalid updates provided for the profile schema attribute",
 		}, http.StatusBadRequest)
 	}
-	return psstr.PatchProfileSchemaAttributeById(ctx, orgId, attributeId, updates)
+	return psstr.PatchProfileSchemaAttributeById(orgId, attributeId, updates)
 }
 
 // DeleteProfileSchemaAttributeById deletes a profile schema attribute by its Id.
-func (s *ProfileSchemaService) DeleteProfileSchemaAttributeById(ctx context.Context, orgId, attributeId string) error {
+func (s *ProfileSchemaService) DeleteProfileSchemaAttributeById(orgId, attributeId string) error {
 
-	attribute, err := s.GetProfileSchemaAttributeById(ctx, orgId, attributeId)
+	attribute, err := s.GetProfileSchemaAttributeById(orgId, attributeId)
 	logger := log.GetLogger()
 	if err != nil {
 		// If the attribute does not exist, treat delete as a no-op (idempotent).
@@ -512,7 +492,7 @@ func (s *ProfileSchemaService) DeleteProfileSchemaAttributeById(ctx context.Cont
 	if strings.Count(attribute.AttributeName, ".") >= 2 {
 		lastDot := strings.LastIndex(attribute.AttributeName, ".")
 		parentName := attribute.AttributeName[:lastDot]
-		parent, err := psstr.GetProfileSchemaAttributeByName(ctx, orgId, parentName)
+		parent, err := psstr.GetProfileSchemaAttributeByName(orgId, parentName)
 		if err != nil {
 			errMsg := fmt.Sprintf("Error retrieving parent attribute '%s' while validating deletion of '%s'", parentName, attribute.AttributeName)
 			logger.Debug(errMsg, log.Error(err))
@@ -535,15 +515,15 @@ func (s *ProfileSchemaService) DeleteProfileSchemaAttributeById(ctx context.Cont
 		}
 	}
 
-	return psstr.DeleteProfileSchemaAttributeById(ctx, orgId, attributeId)
+	return psstr.DeleteProfileSchemaAttributeById(orgId, attributeId)
 }
 
-func (s *ProfileSchemaService) DeleteProfileSchemaAttributesByScope(ctx context.Context, orgId, scope string) error {
-	return psstr.DeleteProfileSchemaAttributes(ctx, orgId, scope)
+func (s *ProfileSchemaService) DeleteProfileSchemaAttributesByScope(orgId, scope string) error {
+	return psstr.DeleteProfileSchemaAttributes(orgId, scope)
 }
 
 // GetProfileSchema retrieves the complete profile schema for the given organization Id.
-func (s *ProfileSchemaService) GetProfileSchema(ctx context.Context, orgId string) (map[string]interface{}, error) {
+func (s *ProfileSchemaService) GetProfileSchema(orgId string) (map[string]interface{}, error) {
 
 	logger := log.GetLogger()
 	// Step 1: Flatten core schema fields from model.CoreSchema
@@ -568,7 +548,7 @@ func (s *ProfileSchemaService) GetProfileSchema(ctx context.Context, orgId strin
 	profileSchema["meta"] = meta
 
 	// Step 2: Fetch schema attributes from DB
-	schemaAttributes, err := psstr.GetProfileSchemaAttributesForOrg(ctx, orgId)
+	schemaAttributes, err := psstr.GetProfileSchemaAttributesForOrg(orgId)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error retrieving profile schema attributes for organization: %s", orgId)
 		logger.Debug(errMsg, log.Error(err))
@@ -616,8 +596,8 @@ func (s *ProfileSchemaService) GetProfileSchema(ctx context.Context, orgId strin
 	return profileSchema, nil
 }
 
-func (s *ProfileSchemaService) DeleteProfileSchema(ctx context.Context, orgId string) error {
-	return psstr.DeleteProfileSchema(ctx, orgId)
+func (s *ProfileSchemaService) DeleteProfileSchema(orgId string) error {
+	return psstr.DeleteProfileSchema(orgId)
 }
 
 func keysOf(m map[string]bool) []string {
@@ -628,10 +608,9 @@ func keysOf(m map[string]bool) []string {
 	return keys
 }
 
-func GetProfileSchemaAttributesWithFilter(ctx context.Context,
-	orgId string, filters []string) ([]model.ProfileSchemaAttribute, error) {
+func GetProfileSchemaAttributesWithFilter(orgId string, filters []string) ([]model.ProfileSchemaAttribute, error) {
 
-	allAttrs, err := psstr.GetProfileSchemaAttributesForOrg(ctx, orgId) // assuming this exists
+	allAttrs, err := psstr.GetProfileSchemaAttributesForOrg(orgId) // assuming this exists
 	if err != nil {
 		return nil, err
 	}
@@ -694,7 +673,7 @@ func matches(attr model.ProfileSchemaAttribute, field, op, val string) bool {
 	return false
 }
 
-func (s *ProfileSchemaService) SyncProfileSchema(ctx context.Context, orgHandle string) error {
+func (s *ProfileSchemaService) SyncProfileSchema(orgHandle string) error {
 
 	cfg := config.GetCDSRuntime().Config
 	identityClient := client.NewIdentityClient(cfg)
@@ -712,7 +691,7 @@ func (s *ProfileSchemaService) SyncProfileSchema(ctx context.Context, orgHandle 
 	}
 
 	if len(claims) > 0 {
-		err := psstr.UpsertIdentityAttributes(ctx, orgHandle, claims)
+		err := psstr.UpsertIdentityAttributes(orgHandle, claims)
 		if err != nil {
 			errMsg := fmt.Sprintf("failed to persist profile schema for organization %s:", orgHandle)
 			logger.Debug(errMsg, log.Error(err))
@@ -727,8 +706,7 @@ func (s *ProfileSchemaService) SyncProfileSchema(ctx context.Context, orgHandle 
 	return nil
 }
 
-func (s *ProfileSchemaService) GetProfileSchemaAttributesByScopeAndFilter(ctx context.Context,
-	orgId, scope string, filters []string) (interface{}, error) {
+func (s *ProfileSchemaService) GetProfileSchemaAttributesByScopeAndFilter(orgId, scope string, filters []string) (interface{}, error) {
 
 	validatedFilters := make([]string, 0, len(filters))
 	for _, f := range filters {
@@ -766,7 +744,7 @@ func (s *ProfileSchemaService) GetProfileSchemaAttributesByScopeAndFilter(ctx co
 		validatedFilters = append(validatedFilters, fmt.Sprintf("%s %s %s", field, operator, value))
 	}
 
-	schemaAttributes, err := psstr.GetProfileSchemaAttributesByScopeAndFilter(ctx, orgId, scope, validatedFilters)
+	schemaAttributes, err := psstr.GetProfileSchemaAttributesByScopeAndFilter(orgId, scope, validatedFilters)
 	if err != nil {
 		return nil, err
 	}

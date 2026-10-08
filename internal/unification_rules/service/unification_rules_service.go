@@ -19,7 +19,6 @@
 package service
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -33,11 +32,12 @@ import (
 )
 
 type UnificationRuleServiceInterface interface {
-	AddUnificationRule(ctx context.Context, rule model.UnificationRule, orgHandle string) error
-	GetUnificationRules(ctx context.Context, orgHandle string) ([]model.UnificationRule, error)
-	GetUnificationRule(ctx context.Context, ruleId string) (*model.UnificationRule, error)
-	PatchUnificationRule(ctx context.Context, ruleId, orgHandle string, updatedRule model.UnificationRule) error
-	DeleteUnificationRule(ctx context.Context, ruleId string) error
+	AddUnificationRule(rule model.UnificationRule, orgHandle string) error
+	GetUnificationRules(orgHandle string) ([]model.UnificationRule, error)
+	GetUnificationRule(ruleId string) (*model.UnificationRule, error)
+	PatchUnificationRule(ruleId, orgHandle string, updatedRule model.UnificationRule) error
+	DeleteUnificationRule(ruleId string) error
+	GetUnificationOptions() model.UnificationOptionsResponse
 }
 
 // UnificationRuleService is the default implementation of the UnificationRuleServiceInterface.
@@ -50,8 +50,7 @@ func GetUnificationRuleService() UnificationRuleServiceInterface {
 }
 
 // AddUnificationRule Adds a new unification rule.
-func (urs *UnificationRuleService) AddUnificationRule(ctx context.Context,
-	rule model.UnificationRule, orgHandle string) error {
+func (urs *UnificationRuleService) AddUnificationRule(rule model.UnificationRule, orgHandle string) error {
 
 	logger := log.GetLogger()
 	// Need to specifically prevent
@@ -72,7 +71,7 @@ func (urs *UnificationRuleService) AddUnificationRule(ctx context.Context,
 	}
 
 	profileSchemaService := provider.NewProfileSchemaProvider().GetProfileSchemaService()
-	schemaAttribute, err := profileSchemaService.GetProfileSchemaAttributeByName(ctx, rule.PropertyName, rule.OrgHandle)
+	schemaAttribute, err := profileSchemaService.GetProfileSchemaAttributeByName(rule.PropertyName, rule.OrgHandle)
 
 	if err != nil {
 		errorMsg := fmt.Sprintf("Error occurred while checking for the property: %s", rule.PropertyName)
@@ -102,7 +101,7 @@ func (urs *UnificationRuleService) AddUnificationRule(ctx context.Context,
 	}
 
 	// Check if a similar unification rule already exists
-	existingRules, err := store.GetUnificationRules(ctx, orgHandle)
+	existingRules, err := store.GetUnificationRules(orgHandle)
 	if err != nil {
 		return err
 	}
@@ -123,20 +122,18 @@ func (urs *UnificationRuleService) AddUnificationRule(ctx context.Context,
 		}
 	}
 	rule.PropertyId = schemaAttribute.AttributeId
-	return store.AddUnificationRule(ctx, rule, orgHandle)
+	return store.AddUnificationRule(rule, orgHandle)
 }
 
 // GetUnificationRules Fetches all resolution rules.
-func (urs *UnificationRuleService) GetUnificationRules(ctx context.Context,
-	orgHandle string) ([]model.UnificationRule, error) {
-	return store.GetUnificationRules(ctx, orgHandle)
+func (urs *UnificationRuleService) GetUnificationRules(orgHandle string) ([]model.UnificationRule, error) {
+	return store.GetUnificationRules(orgHandle)
 }
 
 // GetUnificationRule Fetches a specific resolution rule.
-func (urs *UnificationRuleService) GetUnificationRule(ctx context.Context,
-	ruleId string) (*model.UnificationRule, error) {
+func (urs *UnificationRuleService) GetUnificationRule(ruleId string) (*model.UnificationRule, error) {
 
-	unificationRule, err := store.GetUnificationRule(ctx, ruleId)
+	unificationRule, err := store.GetUnificationRule(ruleId)
 	if err != nil {
 		return nil, err
 	}
@@ -151,8 +148,7 @@ func (urs *UnificationRuleService) GetUnificationRule(ctx context.Context,
 }
 
 // PatchUnificationRule Applies a partial update on a specific resolution rule.
-func (urs *UnificationRuleService) PatchUnificationRule(ctx context.Context,
-	ruleId, orgHandle string, updatedRule model.UnificationRule) error {
+func (urs *UnificationRuleService) PatchUnificationRule(ruleId, orgHandle string, updatedRule model.UnificationRule) error {
 
 	if updatedRule.PropertyName == "user_id" {
 		return errors2.NewClientError(errors2.ErrorMessage{
@@ -163,7 +159,7 @@ func (urs *UnificationRuleService) PatchUnificationRule(ctx context.Context,
 	}
 
 	// Validate that the priority is not already in use
-	existingRules, err := store.GetUnificationRules(ctx, orgHandle)
+	existingRules, err := store.GetUnificationRules(orgHandle)
 	if err != nil {
 		return err
 	}
@@ -176,11 +172,82 @@ func (urs *UnificationRuleService) PatchUnificationRule(ctx context.Context,
 			}, http.StatusBadRequest)
 		}
 	}
-	return store.PatchUnificationRule(ctx, ruleId, updatedRule)
+	return store.PatchUnificationRule(ruleId, updatedRule)
 }
 
 // DeleteUnificationRule Removes a unification rule.
-func (urs *UnificationRuleService) DeleteUnificationRule(ctx context.Context, ruleId string) error {
+func (urs *UnificationRuleService) DeleteUnificationRule(ruleId string) error {
 
-	return store.DeleteUnificationRule(ctx, ruleId)
+	return store.DeleteUnificationRule(ruleId)
+}
+
+// attributeTypeOptions is the ordered list of all supported attribute types and their allowed
+// matching methods, derived entirely from system constants — no database access required.
+var attributeTypeOptions = []model.AttributeTypeOption{
+	{
+		Value: constants.AttributeTypePrimitiveExact,
+		Label: constants.AttributeTypeLabelPrimitiveExact,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+		},
+	},
+	{
+		Value: constants.AttributeTypeFuzzyString,
+		Label: constants.AttributeTypeLabelFuzzyString,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+			{Value: constants.UnificationMethodFuzzy, Label: constants.UnificationMethodLabelFuzzyGeneral},
+		},
+	},
+	{
+		Value: constants.AttributeTypeName,
+		Label: constants.AttributeTypeLabelName,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+			{Value: constants.UnificationMethodFuzzy, Label: constants.UnificationMethodLabelFuzzyPhonetic},
+		},
+	},
+	{
+		Value: constants.AttributeTypeEmail,
+		Label: constants.AttributeTypeLabelEmail,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+			{Value: constants.UnificationMethodFuzzy, Label: constants.UnificationMethodLabelFuzzyGeneral},
+		},
+	},
+	{
+		Value: constants.AttributeTypePhone,
+		Label: constants.AttributeTypeLabelPhone,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+			{Value: constants.UnificationMethodFuzzy, Label: constants.UnificationMethodLabelFuzzyFormat},
+		},
+	},
+	{
+		Value: constants.AttributeTypeLocation,
+		Label: constants.AttributeTypeLabelLocation,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+			{Value: constants.UnificationMethodFuzzy, Label: constants.UnificationMethodLabelFuzzyGeneral},
+		},
+	},
+	{
+		Value: constants.AttributeTypeDate,
+		Label: constants.AttributeTypeLabelDate,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+		},
+	},
+	{
+		Value: constants.AttributeTypeUniqueID,
+		Label: constants.AttributeTypeLabelUniqueID,
+		AllowedMethods: []model.MethodOption{
+			{Value: constants.UnificationMethodDeterministic, Label: constants.UnificationMethodLabelDeterministic},
+		},
+	},
+}
+
+// GetUnificationOptions returns the supported attribute types and their allowed matching methods.
+func (urs *UnificationRuleService) GetUnificationOptions() model.UnificationOptionsResponse {
+	return model.UnificationOptionsResponse{AttributeTypes: attributeTypeOptions}
 }

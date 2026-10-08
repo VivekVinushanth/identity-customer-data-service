@@ -20,100 +20,48 @@ package integration
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"os"
 	"os/exec"
 	"testing"
 
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
-	"github.com/wso2/identity-customer-data-service/internal/system/database"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/provider"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
 	"github.com/wso2/identity-customer-data-service/internal/system/workers"
 	"github.com/wso2/identity-customer-data-service/test/integration/utils"
 	"github.com/wso2/identity-customer-data-service/test/setup"
+
+	irWorker "github.com/wso2/identity-customer-data-service/internal/identity_resolution/worker"
 )
 
-// suiteDB is the datasource the suite is running against, for the tests that
-// need the handle rather than a client over it.
-var (
-	suiteDB     *sql.DB
-	suiteDBType string
-	// suitePostgres is the running container, for the tests that build their
-	// own pool from the runtime configuration rather than from suiteDB.
-	suitePostgres *setup.TestPostgres
-)
-
-// TestMain runs the suite against the datasource named by CDS_TEST_DB:
-// "postgres" (the default) or "sqlite".
 func TestMain(m *testing.M) {
 	ctx := context.Background()
-
-	dbType := os.Getenv("CDS_TEST_DB")
-	if dbType == "" {
-		dbType = database.TypePostgres
-	}
+	os.Setenv("TEST_MODE", "true")
 
 	conf := config.Config{
 		Log: config.LogConfig{
 			LogLevel: "DEBUG",
 		},
 		DataSource: config.DataSourceConfig{
-			Type: dbType,
+			Type: "postgres",
 		},
 	}
 	config.OverrideCDSRuntime(conf)
 	_ = log.Init("DEBUG")
 
-	var db *sql.DB
-	var teardown func()
-
-	switch dbType {
-	case database.TypeSQLite:
-		sqliteDB, err := setup.SetupTestSQLite()
-		if err != nil {
-			fmt.Println("Failed to start test DB:", err)
-			os.Exit(1)
-		}
-		db = sqliteDB.DB
-		teardown = sqliteDB.Terminate
-
-	case database.TypePostgres:
-		pg, err := setup.SetupTestPostgres(ctx)
-		if err != nil {
-			fmt.Println("Failed to start test DB:", err)
-			os.Exit(1)
-		}
-		db = pg.DB
-		suitePostgres = pg
-		teardown = func() {
-			// Terminate container manually after tests complete
-			_ = pg.Container.Terminate(ctx)
-
-			// Remove the docker image used for tests
-			cmd := exec.Command("docker", "rm", "-f", "cds-test-postgres")
-			_, _ = cmd.CombinedOutput()
-		}
-
-		if err := utils.CreateTablesFromFile(pg.DB, utils.GetSchemaPath()); err != nil {
-			fmt.Println("Failed to create tables from schema:", err)
-			os.Exit(1)
-		}
-
-	default:
-		fmt.Printf("Unsupported CDS_TEST_DB value: %s (want %q or %q)\n",
-			dbType, database.TypePostgres, database.TypeSQLite)
+	pg, err := setup.SetupTestPostgres(ctx)
+	if err != nil {
+		fmt.Println("Failed to start test DB:", err)
 		os.Exit(1)
 	}
-
-	provider.SetTestDB(db, dbType)
-	suiteDB, suiteDBType = db, dbType
 
 	if err := workers.StartProfileWorker(); err != nil { // Start the real enrichment queue worker
 		fmt.Println("Failed to start profile worker:", err)
 		os.Exit(1)
 	}
+	workers.RegisterFuzzyResolveFunc(irWorker.ResolveProfileAsync)
+	workers.RegisterReindexAfterMergeFunc(irWorker.ReindexAfterMerge)
 
 	// Initialize Schema Sync worker
 	if err := workers.StartSchemaSyncWorker(); err != nil {
@@ -121,10 +69,22 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	provider.SetTestDB(pg.DB)
+	err = utils.CreateTablesFromFile(pg.DB, utils.GetSchemaPath())
+	if err != nil {
+		fmt.Println("Failed to create tables from schema:", err)
+		os.Exit(1)
+	}
+
 	// Run tests
 	code := m.Run()
 
-	teardown()
+	// Terminate container manually after tests complete
+	_ = pg.Container.Terminate(ctx)
+
+	// Remove the docker image used for tests
+	cmd := exec.Command("docker", "rm", "-f", "cds-test-postgres")
+	_, _ = cmd.CombinedOutput()
 
 	os.Exit(code)
 }

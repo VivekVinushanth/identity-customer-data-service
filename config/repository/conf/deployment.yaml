@@ -48,8 +48,6 @@ auth_server:
       - "internal_cds_profile_view"
     profile:delete:
       - "internal_cds_profile_delete"
-    profile:link:
-      - "internal_cds_profile_link"
 
     unification_rules:view:
       - "internal_cds_unification_rule_view"
@@ -83,6 +81,8 @@ auth_server:
     consent_category:delete:
       - "internal_cds_consent_category_delete"
 
+    identity_resolution:review:
+      - "internal_cds_identity_resolution_review"
 
 sync:
   schema:
@@ -94,12 +94,6 @@ cleanup:
     enabled: true
     interval: 86400    # in seconds (24 hours)
     batch_size: 500
-
-# Maximum time allowed for the complete graceful shutdown: the HTTP server, the
-# workers, the message queue and the database pool. Keep it below the Kubernetes
-# terminationGracePeriodSeconds of the pod. Zero means "use the default".
-shutdown:
-  grace_period_seconds: 25
 
 # Message queue configuration.
 # Set type to "activemq" to use an external ActiveMQ broker for durable
@@ -115,9 +109,6 @@ message_queue:
     profile_queue_name: "/queue/cds-profile-unification"
     schema_sync_queue_name: "/queue/cds-schema-sync"
 
-# Datasource configuration.
-# Use "sqlite" for the inbuilt database, which needs no external server, and
-# "postgres" for production. An unset type means "sqlite".
 datasource:
   type: "postgres"
   hostname: "localhost"
@@ -126,20 +117,6 @@ datasource:
   password: "${DB_PASSWORD}"
   name: "cds_db"
   sslmode: disable
-  # Applies only when type is "postgres". The values are per instance, because
-  # one instance holds one pool. Omit a setting, or set it to zero, to use the
-  # application default. A negative value is refused at start.
-  # postgres:
-  #   max_open_conns: 100             # connections held, in use and idle together
-  #   max_idle_conns: 25              # unused connections kept open
-  #   conn_max_lifetime_seconds: 1800 # retire a connection at this age
-  #   conn_max_idle_time_seconds: 300 # close a connection unused this long
-  #   connect_timeout_seconds: 10     # bound one connection attempt, handshake included
-  # Applies only when type is "sqlite". Zero means the application default.
-  # sqlite:
-  #   path: "repository/database/cds.db" # Relative to the CDS home directory
-  #   options: ""                        # DSN options
-  #   max_open_conns: 4
 
 tls:
   mtls_enabled: true

@@ -98,16 +98,6 @@ var (
 		Message: "Error while fetching applications.",
 	}
 
-	UPSERT_APPLICATION_FAILED = ErrorMessage{
-		Code:    errorPrefix + "15112",
-		Message: "Error while persisting application information.",
-	}
-
-	GET_APPLICATION_FAILED = ErrorMessage{
-		Code:    errorPrefix + "15113",
-		Message: "Error while resolving application information.",
-	}
-
 	ADD_UNIFICATION_RULE = ErrorMessage{
 		Code:    errorPrefix + "15201",
 		Message: "Error while adding unification rules.",
@@ -278,12 +268,6 @@ var (
 		Description: "Multiple user profiles record found for the given user_id",
 	}
 
-	PROFILE_ALREADY_LINKED = ErrorMessage{
-		Code:        errorPrefix + "11017",
-		Message:     "Profile already linked.",
-		Description: "The profile is already linked to a different user",
-	}
-
 	UNIFICATION_RULE_NOT_FOUND = ErrorMessage{
 		Code:    errorPrefix + "12001",
 		Message: "No unification rule found.",
@@ -377,6 +361,56 @@ var (
 		Code:        errorPrefix + "16001",
 		Message:     "Not enabled.",
 		Description: "Customer data service is not enabled for the organization",
+	}
+
+	IR_SEARCH_FAILED = ErrorMessage{
+		Code:    errorPrefix + "15501",
+		Message: "Identity resolution failed.",
+	}
+
+	IR_MERGE_FAILED = ErrorMessage{
+		Code:    errorPrefix + "15502",
+		Message: "Merge failed.",
+	}
+
+	IR_REVIEW_TASK_FAILED = ErrorMessage{
+		Code:    errorPrefix + "15503",
+		Message: "Review task operation failed.",
+	}
+
+	IR_BLOCKING_KEYS_FAILED = ErrorMessage{
+		Code:    errorPrefix + "15504",
+		Message: "Blocking key operation failed.",
+	}
+
+	IR_AUDIT_LOG = ErrorMessage{
+		Code:    errorPrefix + "15505",
+		Message: "Merge audit log failed.",
+	}
+
+	IR_SAMPLE_VALUES = ErrorMessage{
+		Code:    errorPrefix + "15506",
+		Message: "Attribute sampling failed.",
+	}
+
+	IR_WORKER_FAILED = ErrorMessage{
+		Code:    errorPrefix + "15507",
+		Message: "Identity resolution worker failed.",
+	}
+
+	IR_CANNOT_MERGE = ErrorMessage{
+		Code:    errorPrefix + "17001",
+		Message: "Cannot merge profiles.",
+	}
+
+	IR_REVIEW_TASK_NOT_FOUND = ErrorMessage{
+		Code:    errorPrefix + "17002",
+		Message: "Review task not found.",
+	}
+
+	IR_REVIEW_TASK_RESOLVED = ErrorMessage{
+		Code:    errorPrefix + "17003",
+		Message: "Review task already resolved.",
 	}
 
 	INVALID_FILTER_FORMAT = ErrorMessage{
