@@ -151,7 +151,7 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 	if config.AutoMergeEnabled {
 		autoMergeEnabledValue = "true"
 	}
-	_, err = tx.Exec(query, orgHandle, constants.ConfigAutoMergeEnabled, autoMergeEnabledValue)
+	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigAutoMergeEnabled, autoMergeEnabledValue)
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to update auto_merge_enabled for organization: %s", orgHandle)
@@ -163,7 +163,8 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 		}, err)
 	}
 
-	_, err = tx.Exec(query, orgHandle, constants.ConfigAutoMergeThreshold, strconv.FormatFloat(config.AutoMergeThreshold, 'f', -1, 64))
+	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigAutoMergeThreshold,
+		strconv.FormatFloat(config.AutoMergeThreshold, 'f', -1, 64))
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to update auto_merge_threshold for organization: %s", orgHandle)
@@ -175,10 +176,27 @@ func UpdateAdminConfig(ctx context.Context, config model.AdminConfig, orgHandle 
 		}, err)
 	}
 
-	_, err = tx.Exec(query, orgHandle, constants.ConfigManualReviewThreshold, strconv.FormatFloat(config.ManualReviewThreshold, 'f', -1, 64))
+	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigManualReviewThreshold,
+		strconv.FormatFloat(config.ManualReviewThreshold, 'f', -1, 64))
 	if err != nil {
 		_ = tx.Rollback()
 		errorMsg := fmt.Sprintf("Failed to update manual_review_threshold for organization: %s", orgHandle)
+		logger.Debug(errorMsg, log.Error(err))
+		return errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.UPDATE_ADMIN_CONFIG.Code,
+			Message:     errors2.UPDATE_ADMIN_CONFIG.Message,
+			Description: errorMsg,
+		}, err)
+	}
+
+	deterministicDecisiveValue := "false"
+	if config.DeterministicMatchDecisive {
+		deterministicDecisiveValue = "true"
+	}
+	_, err = tx.ExecContext(ctx, query, orgHandle, constants.ConfigDeterministicMatchDecisive, deterministicDecisiveValue)
+	if err != nil {
+		_ = tx.Rollback()
+		errorMsg := fmt.Sprintf("Failed to update deterministic_match_decisive for organization: %s", orgHandle)
 		logger.Debug(errorMsg, log.Error(err))
 		return errors2.NewServerError(errors2.ErrorMessage{
 			Code:        errors2.UPDATE_ADMIN_CONFIG.Code,
@@ -254,6 +272,10 @@ func scanAdminConfigRows(orgHandle string, results []map[string]interface{}) *mo
 		// this key existed has no row for it, and reading that absence as "disabled" would
 		// silently stop every merge the tenant relied on and route it to review instead.
 		AutoMergeEnabled: true,
+		// On unless the org has explicitly turned it off. Before typed matching, any
+		// deterministic rule matching merged the pair outright; an org that has never seen
+		// this key must keep that, and opt into letting other rules object.
+		DeterministicMatchDecisive: true,
 	}
 
 	if len(results) == 0 {
@@ -290,6 +312,8 @@ func scanAdminConfigRows(orgHandle string, results []map[string]interface{}) *mo
 			if v, err := strconv.ParseFloat(value, 64); err == nil && v > 0 && v <= 1 {
 				config.ManualReviewThreshold = v
 			}
+		case constants.ConfigDeterministicMatchDecisive:
+			config.DeterministicMatchDecisive = value == "true"
 		}
 	}
 

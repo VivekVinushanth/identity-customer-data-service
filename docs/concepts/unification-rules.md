@@ -24,19 +24,53 @@ have only ever used that behaviour keep it after upgrading, with no configuratio
   configured before the key existed simply has no row for it; that absence reads as
   **enabled**, because reading it as disabled would silently route every merge the tenant
   relied on into the review queue instead.
+- A deterministic match stays **decisive**. Before, the first rule that matched merged the
+  pair outright, whatever the other rules held; that is still what happens unless the
+  organisation chooses otherwise, through the `deterministic_match_decisive` admin setting
+  described next. Like `auto_merge_enabled`, an organisation with no row for it reads as
+  **on**.
 
-Two behaviours are genuinely new for an existing organisation, and both only ever make the
-engine *more* cautious:
+### Letting other rules object: `deterministic_match_decisive`
 
-- If several rules apply to a pair and most of them actively disagree, an automatic merge is
-  downgraded to a review task rather than performed.
-- If a rule is typed as `DATE` or `UNIQUE_ID` and the two values differ, that disagreement
-  vetoes an automatic merge.
+Every rule is now evaluated for every candidate pair, so the engine knows when the *other*
+rules disagree with a match. What it does with that knowledge is an organisation's choice.
 
-Neither can fire while every rule is an untyped legacy rule, because nothing is typed as
-`DATE` or `UNIQUE_ID` and a lone exact match has nothing to disagree with it. They begin to
-apply as an operator gives attributes their real types, which is the point at which they
-want the extra caution.
+**`deterministic_match_decisive: true` — the default.** A pair agreeing on any deterministic
+rule merges immediately. The other rules are not consulted, exactly as before typed
+matching. Fuzzy rules are unaffected either way: a fuzzy agreement always has to survive
+the objections below.
+
+**`deterministic_match_decisive: false`.** A deterministic match becomes the primary signal
+but the other applicable rules may object. When most of them actively disagree, the merge
+is not performed automatically — a review task is raised and a person decides.
+
+With two deterministic rules on `email` (priority 1) and `phone` (priority 2):
+
+| Both profiles hold | decisive (default) | open to objection |
+|---|---|---|
+| Same email, same phone | merged | merged |
+| Same email, **different phone** | merged | **review task** |
+| Same email, no phone on one side | merged | merged |
+| Different email, **same phone** | merged | **review task** |
+| No email on one side, same phone | merged | merged |
+| Different email, different phone | no action | no action |
+
+A *missing* value is not a disagreement, so it never blocks in either mode — only two
+present values that differ do. Two profiles sharing an email but holding different phone
+numbers is the shared household address case, which is why the open mode asks.
+
+Note that with exactly two rules a single disagreement is already a majority, so a two-rule
+organisation in the open mode is the most conservative configuration there is. Adding a
+third rule can make merges *more* likely, not less.
+
+Objections only ever downgrade an automatic merge to a review task. Nothing merges in the
+open mode that would not have merged in the decisive one, and nothing that merged becomes
+"no action" — the decision moves from automatic to human, never away.
+
+**A disagreement on a `DATE` or `UNIQUE_ID` attribute vetoes an automatic merge** in the
+open mode, whatever else agrees. This cannot affect an organisation that has never typed
+its attributes, because both types have to be declared. It begins to apply as an operator
+gives attributes their real types, which is the point at which the extra caution is wanted.
 
 ---
 
@@ -87,8 +121,8 @@ can judge the effect on existing profiles.
 > **Disclaimer — this setting's scope is provisional.** It currently sits at deployment
 > level because it gates an API surface rather than matching behaviour: whether a field is
 > writable is a property of the build being run. Every other setting that shapes who gets
-> merged — `auto_merge_enabled` and both thresholds — is per organisation in the admin
-> config, so this may move there once there is a way for an operator to preview what a
+> merged — `auto_merge_enabled`, `deterministic_match_decisive` and both thresholds — is per
+> organisation in the admin config, so this may move there once there is a way for an operator to preview what a
 > strength change would do to their existing profiles. Treat its location as unsettled and
 > avoid building tooling that assumes it is server-wide.
 
@@ -224,7 +258,12 @@ Setting `is_active: false` excludes a rule from evaluation without deleting it, 
 that attribute's blocking keys for the organisation — the index shrinks rather than carrying
 entries nothing reads. Re-activating it starts the backfill again.
 
-Changing `attribute_type` on an active rule does both: the old keys are removed and rebuilt,
-because the key shape a type produces is different.
+Changing `attribute_type` **or** `unification_method` on an active rule does both: the old
+keys are removed and rebuilt, because each of those changes the shape of the keys the rule
+writes. The method matters as much as the type — a rule switched from `deterministic` to
+`fuzzy` has only its exact key in the index, so without a rebuild it keeps behaving exactly
+like a deterministic rule for every existing profile while appearing to be fuzzy.
+
+Changing a rule's name or priority needs no rebuild; neither affects the keys.
 
 Existing merges already recorded are not reversed when a rule is deactivated or deleted.
