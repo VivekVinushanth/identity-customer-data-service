@@ -19,10 +19,17 @@
 package service
 
 import (
+	"fmt"
+	"net/http"
+
 	"github.com/wso2/identity-customer-data-service/internal/admin_config/model"
 	"github.com/wso2/identity-customer-data-service/internal/admin_config/store"
+	appProvider "github.com/wso2/identity-customer-data-service/internal/application/provider"
 	consentService "github.com/wso2/identity-customer-data-service/internal/consent/service"
 	"github.com/wso2/identity-customer-data-service/internal/profile_schema/service"
+	sysconfig "github.com/wso2/identity-customer-data-service/internal/system/config"
+	"github.com/wso2/identity-customer-data-service/internal/system/errors"
+	"github.com/wso2/identity-customer-data-service/internal/system/log"
 )
 
 // AdminConfigServiceInterface defines the service interface.
@@ -94,16 +101,38 @@ func (a AdminConfigService) UpdateAdminConfig(updatedConfig model.AdminConfig, o
 
 	schemaService := service.GetProfileSchemaService()
 	if !isCDSEnabledInitialState && !isInitialSchemaSyncDoneInitialState && updatedConfig.CDSEnabled {
-		// CDS is being enabled for the first time. Trigger initial schema sync.
+		logger := log.GetLogger()
+		logger.Debug(fmt.Sprintf("UpdateAdminConfig: triggering initial schema sync for org=%s", orgHandle))
 		err := schemaService.SyncProfileSchema(orgHandle)
 		if err != nil {
+			logger.Error(fmt.Sprintf("UpdateAdminConfig: schema sync failed for org=%s", orgHandle), log.Error(err))
 			return err
 		}
-		// Seed the mandatory "Identity Data" consent category after schema is ready.
+		logger.Debug(fmt.Sprintf("UpdateAdminConfig: schema sync complete for org=%s, seeding consent categories", orgHandle))
 		if err := consentService.GetConsentCategoryService().SeedDefaultConsentCategory(orgHandle); err != nil {
+			logger.Error(fmt.Sprintf("UpdateAdminConfig: consent category seeding failed for org=%s", orgHandle), log.Error(err))
 			return err
 		}
 		updatedConfig.InitialSchemaSyncDone = true
+		logger.Debug(fmt.Sprintf("UpdateAdminConfig: CDS enabled for org=%s", orgHandle))
+	}
+
+	// In app_id mode, register each system application so its clientId->app_id mapping exists for the GET path.
+	if sysconfig.GetCDSRuntime().Config.UsesAppIDIdentifier() {
+		appService := appProvider.NewApplicationProvider().GetApplicationService()
+		for _, appID := range updatedConfig.SystemApplications {
+			exists, err := appService.ResolveAndRegisterApplication(appID, orgHandle)
+			if err != nil {
+				return err
+			}
+			if !exists {
+				return errors.NewClientError(errors.ErrorMessage{
+					Code:        errors.UPDATE_CONFIG_BAD_REQUEST.Code,
+					Message:     errors.UPDATE_CONFIG_BAD_REQUEST.Message,
+					Description: fmt.Sprintf("System application '%s' does not exist in the identity server.", appID),
+				}, http.StatusBadRequest)
+			}
+		}
 	}
 
 	return store.UpdateAdminConfig(updatedConfig, orgHandle)

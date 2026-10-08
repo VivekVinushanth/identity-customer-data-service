@@ -24,6 +24,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/wso2/identity-customer-data-service/internal/identity_resolution/model"
+	"github.com/wso2/identity-customer-data-service/internal/system/cache"
+	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/provider"
 	"github.com/wso2/identity-customer-data-service/internal/system/database/scripts"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
@@ -57,7 +59,7 @@ func UpsertBlockingKeys(profileID, orgHandle string, keys []model.BlockingKey) e
 		}, err)
 	}
 
-	deleteQuery := scripts.DeleteBlockingKeysSQL[provider.NewDBProvider().GetDBType()]
+	deleteQuery := scripts.DeleteBlockingKeysSQL
 	if _, err = tx.Exec(deleteQuery, profileID); err != nil {
 		logger.Error("BlockingStore: failed to delete existing blocking keys", log.Error(err))
 		if rbErr := tx.Rollback(); rbErr != nil {
@@ -81,10 +83,7 @@ func UpsertBlockingKeys(profileID, orgHandle string, keys []model.BlockingKey) e
 		argIdx += 5
 	}
 
-	insertQuery := fmt.Sprintf(
-		scripts.IRInsertBlockingKeys[provider.NewDBProvider().GetDBType()],
-		strings.Join(valueClauses, ", "),
-	)
+	insertQuery := scripts.IRInsertBlockingKeys.Format(strings.Join(valueClauses, ", "))
 
 	if _, err = tx.Exec(insertQuery, args...); err != nil {
 		logger.Error("BlockingStore: failed to insert blocking keys", log.Error(err))
@@ -123,7 +122,7 @@ func DeleteBlockingKeys(profileID string) error {
 	}
 	defer dbClient.Close()
 
-	deleteQuery := scripts.DeleteBlockingKeysSQL[provider.NewDBProvider().GetDBType()]
+	deleteQuery := scripts.DeleteBlockingKeysSQL
 	_, err = dbClient.ExecuteQuery(deleteQuery, profileID)
 	if err != nil {
 		logger.Error("BlockingStore: failed to delete blocking keys", log.Error(err))
@@ -151,7 +150,7 @@ func DeleteBlockingKeysByAttribute(orgHandle, attributeName string) error {
 	}
 	defer dbClient.Close()
 
-	query := scripts.DeleteBlockingKeysByAttributeSQL[provider.NewDBProvider().GetDBType()]
+	query := scripts.DeleteBlockingKeysByAttributeSQL
 	_, err = dbClient.ExecuteQuery(query, orgHandle, attributeName)
 	if err != nil {
 		logger.Error(fmt.Sprintf("BlockingStore: failed to delete blocking keys for attribute '%s'", attributeName),
@@ -195,10 +194,7 @@ func InsertBlockingKeys(profileID, orgHandle string, keys []model.BlockingKey) e
 		argIdx += 5
 	}
 
-	insertQuery := fmt.Sprintf(
-		scripts.IRInsertBlockingKeys[provider.NewDBProvider().GetDBType()],
-		strings.Join(valueClauses, ", "),
-	)
+	insertQuery := scripts.IRInsertBlockingKeys.Format(strings.Join(valueClauses, ", "))
 
 	_, err = dbClient.ExecuteQuery(insertQuery, args...)
 	if err != nil {
@@ -248,10 +244,7 @@ func InsertBlockingKeysBatch(orgHandle string, perProfileKeys map[string][]model
 		}
 	}
 
-	insertQuery := fmt.Sprintf(
-		scripts.IRInsertBlockingKeys[provider.NewDBProvider().GetDBType()],
-		strings.Join(valueClauses, ", "),
-	)
+	insertQuery := scripts.IRInsertBlockingKeys.Format(strings.Join(valueClauses, ", "))
 
 	if _, err := dbClient.ExecuteQuery(insertQuery, args...); err != nil {
 		logger.Error("BlockingStore: failed to batch insert blocking keys", log.Error(err))
@@ -304,9 +297,7 @@ func FindCandidateIDsByKeys(
 	args = append(args, maxResults+1)
 	limitArgIdx := argIdx
 
-	query := fmt.Sprintf(
-		scripts.IRFindCandidateIDsByKeys[provider.NewDBProvider().GetDBType()],
-		strings.Join(inClauses, ", "),
+	query := scripts.IRFindCandidateIDsByKeys.Format(strings.Join(inClauses, ", "),
 		excludeArgIdx,
 		limitArgIdx,
 	)
@@ -321,7 +312,13 @@ func FindCandidateIDsByKeys(
 		}, err)
 	}
 
+	// The bucket is too crowded to be evidence of anything — a value this common says
+	// nothing about identity, so no candidate from it is worth scoring. Skipping is
+	// deliberate, but it costs recall, so make it visible rather than silent.
 	if len(results) > maxResults {
+		logger.Warn(fmt.Sprintf(
+			"BlockingStore: attribute '%s' matched more than %d profiles in org '%s' — skipping this key group",
+			attributeName, maxResults, orgHandle))
 		return nil, nil
 	}
 
@@ -359,10 +356,7 @@ func GetProfilesByIDs(profileIDs []string) ([]model.ProfileData, error) {
 		args = append(args, id)
 	}
 
-	query := fmt.Sprintf(
-		scripts.IRGetProfilesByIDs[provider.NewDBProvider().GetDBType()],
-		strings.Join(inClauses, ", "),
-	)
+	query := scripts.IRGetProfilesByIDs.Format(strings.Join(inClauses, ", "))
 
 	results, err := dbClient.ExecuteQuery(query, args...)
 	if err != nil {
@@ -385,4 +379,55 @@ func GetProfilesByIDs(profileIDs []string) ([]model.ProfileData, error) {
 	}
 
 	return profiles, nil
+}
+
+// rarityCache memoises value frequencies. Frequencies move slowly and are only used to
+// pick a band, so a short TTL keeps the scoring path off the database for hot values
+// without letting a genuinely spreading value stay classified as rare.
+var rarityCache = cache.NewCache(constants.RarityLookupCacheTTL)
+
+// CountProfilesByBlockingKey reports how many profiles in the org already carry the given
+// exact blocking key — that is, how common the value is within the tenant.
+func CountProfilesByBlockingKey(orgHandle, attributeName, keyValue string) (int, error) {
+	logger := log.GetLogger()
+
+	cacheKey := orgHandle + "|" + attributeName + "|" + keyValue
+	if cached, found := rarityCache.Get(cacheKey); found {
+		if count, ok := cached.(int); ok {
+			return count, nil
+		}
+	}
+
+	dbClient, err := provider.NewDBProvider().GetDBClient()
+	if err != nil {
+		return 0, errors2.NewServerError(errors2.ErrorMessage{
+			Code:        errors2.IR_BLOCKING_KEYS_FAILED.Code,
+			Message:     errors2.IR_BLOCKING_KEYS_FAILED.Message,
+			Description: "Failed to connect to database for value frequency lookup.",
+		}, err)
+	}
+	defer dbClient.Close()
+
+	query := scripts.IRCountProfilesByBlockingKey
+	results, err := dbClient.ExecuteQuery(query, orgHandle, attributeName, keyValue)
+	if err != nil {
+		logger.Warn(fmt.Sprintf("BlockingStore: frequency lookup failed for attribute '%s'", attributeName),
+			log.Error(err))
+		return 0, err
+	}
+
+	count := 0
+	if len(results) > 0 {
+		switch v := results[0]["profile_count"].(type) {
+		case int64:
+			count = int(v)
+		case int:
+			count = v
+		case float64:
+			count = int(v)
+		}
+	}
+
+	rarityCache.Set(cacheKey, count)
+	return count, nil
 }

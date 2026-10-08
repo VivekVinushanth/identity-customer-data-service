@@ -19,6 +19,8 @@ addr:
 
 server_url: {{ .Values.cloud.deployment.cds.config.serverUrl | quote }}
 
+application_identifier_type: {{ .Values.cloud.deployment.cds.config.applicationIdentifierType | quote }}
+
 auth_server:
   host: {{ .Values.cloud.deployment.cds.config.identityServer.host }}
   port : {{ .Values.cloud.deployment.cds.config.identityServer.port }}
@@ -30,6 +32,8 @@ auth_server:
   claimsEndpoint: {{ .Values.cloud.deployment.cds.config.identityServer.claimsEndpoint }}
   client_id: "${AUTH_SERVER_CLIENT_ID}"
   client_secret: "${AUTH_SERVER_CLIENT_SECRET}"
+  sub_org_client_id: "${SUB_ORG_CLIENT_ID}"
+  sub_org_client_secret: "${SUB_ORG_CLIENT_SECRET}"
   admin_username: "${AUTH_SERVER_ADMIN_USERNAME}"
   admin_password: "${AUTH_SERVER_ADMIN_PASSWORD}"
   introspection_client_id: "${INTROSPECTION_CLIENT_ID}"
@@ -44,6 +48,8 @@ auth_server:
       - "internal_cds_profile_view"
     profile:delete:
       - "internal_cds_profile_delete"
+    profile:link:
+      - "internal_cds_profile_link"
 
     unification_rules:view:
       - "internal_cds_unification_rule_view"

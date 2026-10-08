@@ -54,6 +54,33 @@ paths:
         '204':
           description: Profile deleted successfully
 
+  /profiles/link:
+    post:
+      tags: [Profile]
+      summary: Link an anonymous profile to a user
+      operationId: linkProfile
+      security:
+        - bearerAuth: [ ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProfileLinkRequest'
+      responses:
+        '200':
+          description: Profile linked successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileLinkResponse'
+        '400':
+          description: Invalid request
+        '404':
+          description: Profile not found
+        '409':
+          description: Profile is already linked to a different user
+
   /events:
     post:
       tags: [Events]
@@ -425,6 +452,29 @@ components:
         profile_hierarchy:
           $ref: '#/components/schemas/ProfileHierarchy'
 
+    ProfileLinkRequest:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          example: "e8bf7337-4049-4d92-9545-711894ab2af3"
+        user_id:
+          type: string
+          example: "40497337-e8bf-4d92-9545-711894ab2af3"
+      required:
+        - profile_id
+        - user_id
+
+    ProfileLinkResponse:
+      type: object
+      properties:
+        profile_id:
+          type: string
+          example: "e8bf7337-4049-4d92-9545-711894ab2af3"
+        user_id:
+          type: string
+          example: "40497337-e8bf-4d92-9545-711894ab2af3"
+
     ProfileHierarchy:
       type: object
       properties:
@@ -604,6 +654,40 @@ components:
           type: boolean
           description: Whether the rule is currently active
           example: true
+        attribute_type:
+          type: string
+          description: |
+            What kind of value the attribute holds. Determines which comparison is applied
+            and which blocking keys are indexed.
+          enum: [PRIMITIVE_EXACT, FUZZY_STRING, NAME, EMAIL, PHONE, LOCATION, DATE, UNIQUE_ID]
+          example: "EMAIL"
+        unification_method:
+          type: string
+          description: |
+            Whether this rule matches on exact equality or tolerates variation. Rules of
+            both kinds are evaluated side by side within a single comparison. Only
+            FUZZY_STRING, NAME, EMAIL, PHONE and LOCATION support `fuzzy`.
+          enum: [deterministic, fuzzy]
+          example: "deterministic"
+        match_strength:
+          type: string
+          description: |
+            How much an agreement on this attribute supports a merge. HIGH means the
+            attribute identifies a person well enough to merge on it alone; MEDIUM and LOW
+            require a second agreeing rule. Defaults from `attribute_type` when omitted.
+          enum: [HIGH, MEDIUM, LOW]
+          example: "HIGH"
+        mismatch_strength:
+          type: string
+          description: |
+            How much a disagreement on this attribute opposes a merge. HIGH makes the
+            attribute discriminating: two present, differing values veto an automatic merge
+            whatever else agrees. Independent of `match_strength`, because the two
+            directions rarely carry equal weight — matching emails strongly imply the same
+            person while differing emails imply little, and a date of birth is the reverse.
+            Defaults from `attribute_type` when omitted.
+          enum: [HIGH, MEDIUM, LOW]
+          example: "LOW"
         created_at:
           type: integer
           format: int64
@@ -630,6 +714,40 @@ components:
           type: boolean
           description: Whether the rule is currently active
           example: true
+        attribute_type:
+          type: string
+          description: |
+            What kind of value the attribute holds. Determines which comparison is applied
+            and which blocking keys are indexed.
+          enum: [PRIMITIVE_EXACT, FUZZY_STRING, NAME, EMAIL, PHONE, LOCATION, DATE, UNIQUE_ID]
+          example: "EMAIL"
+        unification_method:
+          type: string
+          description: |
+            Whether this rule matches on exact equality or tolerates variation. Rules of
+            both kinds are evaluated side by side within a single comparison. Only
+            FUZZY_STRING, NAME, EMAIL, PHONE and LOCATION support `fuzzy`.
+          enum: [deterministic, fuzzy]
+          example: "deterministic"
+        match_strength:
+          type: string
+          description: |
+            How much an agreement on this attribute supports a merge. HIGH means the
+            attribute identifies a person well enough to merge on it alone; MEDIUM and LOW
+            require a second agreeing rule. Defaults from `attribute_type` when omitted.
+          enum: [HIGH, MEDIUM, LOW]
+          example: "HIGH"
+        mismatch_strength:
+          type: string
+          description: |
+            How much a disagreement on this attribute opposes a merge. HIGH makes the
+            attribute discriminating: two present, differing values veto an automatic merge
+            whatever else agrees. Independent of `match_strength`, because the two
+            directions rarely carry equal weight — matching emails strongly imply the same
+            person while differing emails imply little, and a date of birth is the reverse.
+            Defaults from `attribute_type` when omitted.
+          enum: [HIGH, MEDIUM, LOW]
+          example: "LOW"
 
     ConsentCategory:
       type: object
