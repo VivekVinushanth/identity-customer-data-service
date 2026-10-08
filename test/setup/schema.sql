@@ -188,8 +188,15 @@ CREATE INDEX IF NOT EXISTS idx_review_tasks_incoming ON review_tasks(incoming_pr
 CREATE TABLE IF NOT EXISTS rejection_pairs (
     id              VARCHAR(255) PRIMARY KEY,
     org_handle      VARCHAR(255) NOT NULL,
+    -- Stored with the lower id first, so one row means one pair whichever direction the
+    -- review task happened to run in and the unique constraint below isenforceable.
     profile_id_1    VARCHAR(255) NOT NULL,
     profile_id_2    VARCHAR(255) NOT NULL,
+    -- The evidence the decision was made against. A rejection asserts that two profiles are
+    -- different people, which does not stop being true because an attribute changed — so it
+    -- is only reconsidered when later evidence is materially stronger than this.
+    match_score     DECIMAL(5,4),
+    score_breakdown JSONB DEFAULT '{}'::jsonb,
     rejected_by     VARCHAR(255),
     rejected_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT uq_rejection_pair UNIQUE (profile_id_1, profile_id_2)
@@ -197,21 +204,6 @@ CREATE TABLE IF NOT EXISTS rejection_pairs (
 
 CREATE INDEX IF NOT EXISTS idx_rejection_pairs_p1 ON rejection_pairs(org_handle, profile_id_1);
 CREATE INDEX IF NOT EXISTS idx_rejection_pairs_p2 ON rejection_pairs(org_handle, profile_id_2);
-
-CREATE TABLE IF NOT EXISTS merge_audit_log (
-    id                      VARCHAR(255) PRIMARY KEY,
-    org_handle              VARCHAR(255) NOT NULL,
-    primary_profile_id      VARCHAR(255) NOT NULL,
-    secondary_profile_id    VARCHAR(255) NOT NULL,
-    merge_type              VARCHAR(50) NOT NULL,
-    match_score             DECIMAL(5,4),
-    merged_by               VARCHAR(255),
-    merge_timestamp         TIMESTAMPTZ NOT NULL DEFAULT now(),
-    merge_details           JSONB DEFAULT '{}'::jsonb,
-    rollback_data           JSONB DEFAULT '{}'::jsonb
-);
-
-CREATE INDEX IF NOT EXISTS idx_merge_audit_org ON merge_audit_log(org_handle, merge_timestamp DESC);
 
 -- ================================
 -- PROFILES (Hot path: tenant + cursor pagination + ordering)
@@ -228,7 +220,6 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE INDEX IF NOT EXISTS idx_profiles_user_id_trgm
     ON profiles USING GIN (user_id gin_trgm_ops);
 
-
 -- ================================
 -- PROFILE_REFERENCE (Join + status filtering)
 -- ================================
@@ -242,7 +233,6 @@ CREATE INDEX IF NOT EXISTS idx_profile_reference_org_status_profile
 -- For lookups by reference_profile_id
 CREATE INDEX IF NOT EXISTS idx_profile_reference_reference_profile
     ON profile_reference (reference_profile_id);
-
 
 -- ================================
 -- APPLICATION_DATA (Joins + filtering)
@@ -259,7 +249,6 @@ CREATE INDEX IF NOT EXISTS idx_application_data_app_id
 CREATE INDEX IF NOT EXISTS idx_application_data_app_specific_gin
     ON application_data USING GIN ((application_data -> 'app_specific_data'));
 
-
 -- ================================
 -- JSONB FILTERING (Profiles)
 -- ================================
@@ -270,7 +259,6 @@ CREATE INDEX IF NOT EXISTS idx_profiles_traits_gin
 CREATE INDEX IF NOT EXISTS idx_profiles_identity_attributes_gin
     ON profiles USING GIN (identity_attributes);
 
-
 -- ================================
 -- PROFILE_SCHEMA (Rare filtering, minimal indexes)
 -- ================================
@@ -279,7 +267,6 @@ CREATE INDEX IF NOT EXISTS idx_profile_schema_org_scope
 
 CREATE INDEX IF NOT EXISTS idx_profile_schema_org_attr_name
     ON profile_schema (org_handle, attribute_name);
-
 
 -- ================================
 -- UNIFICATION_RULES

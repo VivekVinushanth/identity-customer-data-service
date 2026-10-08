@@ -19,6 +19,7 @@
 package worker
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"sync"
@@ -35,10 +36,10 @@ import (
 	urStore "github.com/wso2/identity-customer-data-service/internal/unification_rules/store"
 )
 
-func ResolveProfileAsync(profile profileModel.Profile) {
+func ResolveProfileAsync(ctx context.Context, profile profileModel.Profile) {
 	logger := log.GetLogger()
 
-	freshProfile, err := profileStore.GetProfile(profile.ProfileId)
+	freshProfile, err := profileStore.GetProfile(ctx, profile.ProfileId)
 	if err != nil || freshProfile == nil {
 		logger.Error(fmt.Sprintf("AsyncWorker: failed to fetch profile '%s', skipping", profile.ProfileId))
 		return
@@ -49,13 +50,15 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 	flatAttrs := flattenProfile(freshProfile)
 
 	// Load unification rules for blocking key generation and scoring/merge decisions.
-	rawRules, err := urStore.GetUnificationRules(orgHandle)
+	rawRules, err := urStore.GetUnificationRules(ctx, orgHandle)
 	if err != nil {
 		logger.Error(fmt.Sprintf("AsyncWorker: failed to load unification rules for org '%s'", orgHandle), log.Error(err))
 		return
 	}
 
-	rules := filterActiveRules(rawRules)
+	rules := urModel.ActiveSortedByPriority(rawRules, constants.AttributeTypePrimitiveExact,
+		constants.UnificationMethodDeterministic, constants.DefaultMatchStrength,
+		constants.DefaultMismatchStrength)
 	if len(rules) == 0 {
 		return
 	}
@@ -72,7 +75,7 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 		// An update can remove the last value a rule matched on. Returning without touching
 		// the index would leave the profile discoverable under its old keys, so it keeps
 		// matching on data it no longer has.
-		if err := irStore.DeleteBlockingKeys(freshProfile.ProfileId); err != nil {
+		if err := irStore.DeleteBlockingKeys(ctx, freshProfile.ProfileId); err != nil {
 			logger.Warn(fmt.Sprintf("AsyncWorker: failed to clear stale blocking keys for '%s'",
 				freshProfile.ProfileId), log.Error(err))
 		}
@@ -83,7 +86,7 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 	blockingKeys := engine.GenerateBlockingKeysFromRules(flatAttrs, rules)
 
 	if len(blockingKeys) > 0 {
-		if err := irStore.UpsertBlockingKeys(freshProfile.ProfileId, orgHandle, blockingKeys); err != nil {
+		if err := irStore.UpsertBlockingKeys(ctx, freshProfile.ProfileId, orgHandle, blockingKeys); err != nil {
 			logger.Warn(fmt.Sprintf("AsyncWorker: failed to index profile '%s' in blocking_keys",
 				freshProfile.ProfileId), log.Error(err))
 		}
@@ -95,7 +98,10 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 		parentID = freshProfile.ProfileStatus.ReferenceProfileId
 	}
 
-	candidateIDs := engine.FindCandidatesByIndex(blockingKeys, orgHandle, excludeID, irStore.FindCandidateIDsByKeys)
+	candidateIDs := engine.FindCandidatesByIndex(blockingKeys, orgHandle, excludeID,
+		func(org, attr string, values []string, exclude string, max int) ([]string, error) {
+			return irStore.FindCandidateIDsByKeys(ctx, org, attr, values, exclude, max)
+		})
 
 	if parentID != "" {
 		filtered := make([]string, 0, len(candidateIDs))
@@ -111,7 +117,7 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 		return
 	}
 
-	candidateProfiles, err := irStore.GetProfilesByIDs(candidateIDs)
+	candidateProfiles, err := irStore.GetProfilesByIDs(ctx, candidateIDs)
 	if err != nil {
 		logger.Error(fmt.Sprintf("AsyncWorker: failed to load candidate profiles for org '%s'", orgHandle), log.Error(err))
 		return
@@ -148,7 +154,7 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 				resolvedID = masterID
 				// Load master into profileMap if not already there.
 				if _, ok := profileMap[masterID]; !ok {
-					masterProfiles, loadErr := irStore.GetProfilesByIDs([]string{masterID})
+					masterProfiles, loadErr := irStore.GetProfilesByIDs(ctx, []string{masterID})
 					if loadErr != nil || len(masterProfiles) == 0 {
 						logger.Warn(fmt.Sprintf("AsyncWorker: could not load master '%s' for child '%s', skipping child",
 							masterID, cid))
@@ -169,11 +175,13 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 		return
 	}
 
-	thresholds := model.LoadThresholds(orgHandle)
+	thresholds := model.LoadThresholds(ctx, orgHandle)
 	scoringCtx := engine.ScoringContext{
-		OrgHandle:      orgHandle,
-		Thresholds:     thresholds,
-		ValueFrequency: irStore.CountProfilesByBlockingKey,
+		OrgHandle:  orgHandle,
+		Thresholds: thresholds,
+		ValueFrequency: func(org, attr, keyValue string) (int, error) {
+			return irStore.CountProfilesByBlockingKey(ctx, org, attr, keyValue)
+		},
 	}
 
 	type scoredCandidate struct {
@@ -208,12 +216,14 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 		return scored[i].score > scored[j].score
 	})
 
-	// Filter out candidates that have been explicitly rejected against this profile.
-	rejectedIDs, _ := irStore.GetRejectedProfileIDs(orgHandle, freshProfile.ProfileId)
-	if len(rejectedIDs) > 0 {
+	// Drop candidates an administrator has already decided are different people, unless
+	// this evaluation is materially stronger than the one they rejected.
+	rejections, _ := irStore.GetRejectionsForProfile(ctx, orgHandle, freshProfile.ProfileId)
+	if len(rejections) > 0 {
 		var filtered []scoredCandidate
 		for _, sc := range scored {
-			if _, ok := rejectedIDs[sc.id]; ok {
+			rejection, wasRejected := rejections[sc.id]
+			if wasRejected && !rejection.ShouldReconsider(sc.score, sc.breakdown, thresholds.ManualReview) {
 				continue
 			}
 			filtered = append(filtered, sc)
@@ -250,70 +260,58 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 
 		if decision == constants.DecisionAutoMerge {
 
-			matchedProfile, loadErr := profileStore.GetProfile(sc.id)
+			matchedProfile, loadErr := profileStore.GetProfile(ctx, sc.id)
 			if loadErr != nil || matchedProfile == nil {
 				logger.Error(fmt.Sprintf("AsyncWorker: failed to load matched profile '%s' for auto-merge", sc.id))
-				insertReviewTask(orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown)
+				insertReviewTask(ctx, orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown, thresholds.ManualReview, rejections)
 				continue
 			}
 
 			// Attribute the merge to the rule that actually drove it, so the child
 			// reference records why rather than a generic "auto_merge".
+			// Attribute the merge to the rule that drove it, so the child reference
+			// records why rather than a generic "auto_merge".
 			mergeReason := constants.MergeReasonAutoMerge
-			for _, rule := range rules {
-				if score, ok := sc.breakdown[rule.PropertyName]; ok && score == sc.score {
-					mergeReason = rule.RuleName
-					break
-				}
+			if ruleName, found := urModel.PrimaryRuleName(sc.breakdown, rules, thresholds.ManualReview); found {
+				mergeReason = ruleName
 			}
 
 			// The surviving master is whichever profile the merge promoted — it is not
 			// necessarily matchedProfile. A permanent profile wins over a temporary one,
 			// and two temporary profiles are both demoted under a brand-new master.
-			survivingMaster, mergeErr := workers.MergeMatchedProfiles(*matchedProfile, *freshProfile, mergeReason)
+			survivingMaster, mergeErr := workers.MergeMatchedProfiles(ctx, *matchedProfile, *freshProfile, mergeReason)
 			if mergeErr != nil {
 				// Merge failed so not mark merged=true, not write audit log, not
 				// cascade-cancel related tasks.
 				logger.Error(fmt.Sprintf("AsyncWorker: auto-merge failed for '%s' → '%s' — falling back to review task",
 					matchedProfile.ProfileId, freshProfile.ProfileId), log.Error(mergeErr))
-				insertReviewTask(orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown)
+				insertReviewTask(ctx, orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown, thresholds.ManualReview, rejections)
 				continue
 			}
 			if survivingMaster == nil {
 				// Pair turned out to be unmergeable — surface it for review instead.
-				insertReviewTask(orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown)
+				insertReviewTask(ctx, orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown, thresholds.ManualReview, rejections)
 				continue
 			}
 			merged = true
 			mergedMaster = survivingMaster
-			if auditErr := irStore.InsertMergeAuditLog(model.MergeAuditEntry{
-				OrgHandle:          orgHandle,
-				PrimaryProfileID:   survivingMaster.ProfileId,
-				SecondaryProfileID: freshProfile.ProfileId,
-				MergeType:          constants.DecisionAutoMerge,
-				MatchScore:         sc.score,
-				MergedBy:           constants.MergeOnTrigger,
-			}); auditErr != nil {
-				logger.Error(fmt.Sprintf("AsyncWorker: failed to insert merge audit log for '%s' → '%s'",
-					survivingMaster.ProfileId, freshProfile.ProfileId), log.Error(auditErr))
-			}
 			remaining = scored[i+1:]
 			break
 		}
 
-		insertReviewTask(orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown)
+		insertReviewTask(ctx, orgHandle, freshProfile.ProfileId, sc.id, sc.score, sc.breakdown, thresholds.ManualReview, rejections)
 	}
 
 	if merged {
 		// Cancel pending review tasks that referenced the freshly-merged profile.
-		cancelledIncomingIDs, cancelErr := irStore.CancelRelatedReviewTasks("", freshProfile.ProfileId,
+		cancelledIncomingIDs, cancelErr := irStore.CancelRelatedReviewTasks(ctx, "", freshProfile.ProfileId,
 			mergedMaster.ProfileId, constants.CanceledBySystem)
 		if cancelErr != nil {
 			logger.Warn(fmt.Sprintf("AsyncWorker: cascade cancel failed after auto-merge of '%s' → '%s'",
 				freshProfile.ProfileId, mergedMaster.ProfileId), log.Error(cancelErr))
 		}
 		for _, srcID := range cancelledIncomingIDs {
-			p, loadErr := profileStore.GetProfile(srcID)
+			p, loadErr := profileStore.GetProfile(ctx, srcID)
 			if loadErr != nil || p == nil {
 				continue
 			}
@@ -323,7 +321,7 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 				if masterID == mergedMaster.ProfileId {
 					continue
 				}
-				master, mErr := profileStore.GetProfile(masterID)
+				master, mErr := profileStore.GetProfile(ctx, masterID)
 				if mErr != nil || master == nil {
 					continue
 				}
@@ -338,19 +336,25 @@ func ResolveProfileAsync(profile profileModel.Profile) {
 		for _, sc := range remaining {
 			decision := model.Decide(sc.score, thresholds)
 			if decision == constants.DecisionAutoMerge || decision == constants.DecisionManualReview {
-				insertReviewTask(orgHandle, mergedMaster.ProfileId, sc.id, sc.score, sc.breakdown)
+				insertReviewTask(ctx, orgHandle, mergedMaster.ProfileId, sc.id, sc.score, sc.breakdown, thresholds.ManualReview, rejections)
 			}
 		}
 	}
 }
 
-func insertReviewTask(orgHandle, incomingProfileID, candidateProfileID string, score float64, breakdown map[string]float64) {
+// insertReviewTask records a pair for an administrator to decide on.
+//
+// The caller passes the rejections it already loaded rather than having this re-read them:
+// one evaluation can raise several tasks, and re-fetching the same set per task was a query
+// each time for data already in memory.
+func insertReviewTask(ctx context.Context, orgHandle, incomingProfileID, candidateProfileID string,
+	score float64, breakdown map[string]float64, agreementThreshold float64,
+	rejections map[string]model.Rejection) {
+
 	logger := log.GetLogger()
 
-	rejectedIDs, err := irStore.GetRejectedProfileIDs(orgHandle, incomingProfileID)
-	if err != nil {
-		logger.Warn(fmt.Sprintf("AsyncWorker: could not check rejection pairs for '%s', proceeding with task creation", incomingProfileID), log.Error(err))
-	} else if _, ok := rejectedIDs[candidateProfileID]; ok {
+	if rejection, wasRejected := rejections[candidateProfileID]; wasRejected &&
+		!rejection.ShouldReconsider(score, breakdown, agreementThreshold) {
 		return
 	}
 
@@ -363,38 +367,41 @@ func insertReviewTask(orgHandle, incomingProfileID, candidateProfileID string, s
 		ScoreBreakdown:     breakdown,
 	}
 
-	if err := irStore.InsertReviewTask(task); err != nil {
+	if err := irStore.InsertReviewTask(ctx, task); err != nil {
 		logger.Error(fmt.Sprintf("AsyncWorker: failed to create review task for '%s' → '%s'",
 			incomingProfileID, candidateProfileID), log.Error(err))
 	}
 }
 
-func ReindexAfterMerge(masterProfileID, triggerProfileId, orgHandle string, mergedProfile profileModel.Profile) {
+func ReindexAfterMerge(ctx context.Context, masterProfileID, triggerProfileId, orgHandle string,
+	mergedProfile profileModel.Profile) {
 	logger := log.GetLogger()
 
-	if err := irStore.DeleteBlockingKeys(triggerProfileId); err != nil {
+	if err := irStore.DeleteBlockingKeys(ctx, triggerProfileId); err != nil {
 		logger.Warn(fmt.Sprintf("ReindexAfterMerge: failed to delete trigger '%s' blocking keys", triggerProfileId),
 			log.Error(err))
 	}
 
 	// The merged-away profile is no longer the addressable entity, so any rejection naming
 	// it has to follow it onto the master or the dismissed pair comes straight back.
-	if err := irStore.RepointRejectionPairs(orgHandle, triggerProfileId, masterProfileID); err != nil {
+	if err := irStore.RepointRejectionPairs(ctx, orgHandle, triggerProfileId, masterProfileID); err != nil {
 		logger.Warn(fmt.Sprintf("ReindexAfterMerge: failed to repoint rejection pairs from '%s' to '%s'",
 			triggerProfileId, masterProfileID), log.Error(err))
 	}
 
-	rawRules, err := urStore.GetUnificationRules(orgHandle)
+	rawRules, err := urStore.GetUnificationRules(ctx, orgHandle)
 	if err != nil {
 		logger.Warn(fmt.Sprintf("ReindexAfterMerge: failed to load unification rules for org '%s'", orgHandle),
 			log.Error(err))
 		return
 	}
-	rules := filterActiveRules(rawRules)
+	rules := urModel.ActiveSortedByPriority(rawRules, constants.AttributeTypePrimitiveExact,
+		constants.UnificationMethodDeterministic, constants.DefaultMatchStrength,
+		constants.DefaultMismatchStrength)
 
 	newKeys := engine.GenerateBlockingKeysFromRules(flattenProfile(&mergedProfile), rules)
 	if len(newKeys) > 0 {
-		if err := irStore.UpsertBlockingKeys(masterProfileID, orgHandle, newKeys); err != nil {
+		if err := irStore.UpsertBlockingKeys(ctx, masterProfileID, orgHandle, newKeys); err != nil {
 			logger.Warn(fmt.Sprintf("ReindexAfterMerge: failed to re-index master '%s'", masterProfileID),
 				log.Error(err))
 		}
@@ -424,7 +431,7 @@ var backfillsInFlight sync.Map
 // reports on it: a backfill that dies halfway leaves a partially indexed attribute that
 // looks exactly like a fully indexed one, and silently under-matches until the next time
 // every affected profile happens to be updated.
-func IndexNewAttribute(orgHandle string, rule urModel.UnificationRule) {
+func IndexNewAttribute(ctx context.Context, orgHandle string, rule urModel.UnificationRule) {
 	logger := log.GetLogger()
 
 	inFlightKey := orgHandle + "|" + rule.PropertyName
@@ -451,7 +458,7 @@ func IndexNewAttribute(orgHandle string, rule urModel.UnificationRule) {
 	afterProfileID := ""
 
 	for {
-		profiles, err := irStore.GetProfilesForOrgAfter(orgHandle, afterProfileID, constants.GetProfilesPageSize)
+		profiles, err := irStore.GetProfilesForOrgAfter(ctx, orgHandle, afterProfileID, constants.GetProfilesPageSize)
 		if err != nil {
 			logger.Error(fmt.Sprintf(
 				"Reindexer: backfill of '%s' for org '%s' ABORTED after %d profiles — the index is incomplete",
@@ -481,7 +488,7 @@ func IndexNewAttribute(orgHandle string, rule urModel.UnificationRule) {
 		}
 
 		if len(perProfileKeys) > 0 {
-			if err := irStore.InsertBlockingKeysBatch(orgHandle, perProfileKeys); err != nil {
+			if err := irStore.InsertBlockingKeysBatch(ctx, orgHandle, perProfileKeys); err != nil {
 				logger.Error(fmt.Sprintf(
 					"Reindexer: batch insert failed for org '%s' at profile '%s' — those profiles are unindexed",
 					orgHandle, afterProfileID), log.Error(err))
@@ -501,26 +508,9 @@ func IndexNewAttribute(orgHandle string, rule urModel.UnificationRule) {
 
 // RemoveAttributeIndex removes all blocking keys for a specific attribute in an org.
 // Called when a unification rule is deleted or deactivated.
-func RemoveAttributeIndex(orgHandle string, attributeName string) {
+func RemoveAttributeIndex(ctx context.Context, orgHandle string, attributeName string) {
 	logger := log.GetLogger()
-	if err := irStore.DeleteBlockingKeysByAttribute(orgHandle, attributeName); err != nil {
+	if err := irStore.DeleteBlockingKeysByAttribute(ctx, orgHandle, attributeName); err != nil {
 		logger.Error(fmt.Sprintf("Reindexer: failed to remove attribute index '%s'", attributeName), log.Error(err))
 	}
-}
-
-// filterActiveRules returns only active unification rules sorted by priority.
-func filterActiveRules(rules []urModel.UnificationRule) []urModel.UnificationRule {
-	active := make([]urModel.UnificationRule, 0, len(rules))
-	for _, r := range rules {
-		if !r.IsActive {
-			continue
-		}
-		active = append(active, urModel.ApplyDefaults(r, constants.AttributeTypePrimitiveExact,
-			constants.UnificationMethodDeterministic, constants.DefaultMatchStrength,
-			constants.DefaultMismatchStrength))
-	}
-	sort.Slice(active, func(i, j int) bool {
-		return active[i].Priority < active[j].Priority
-	})
-	return active
 }

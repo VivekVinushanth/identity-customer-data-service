@@ -18,9 +18,10 @@
 
 package constants
 
-import "time"
-
-import "regexp"
+import (
+	"regexp"
+	"time"
+)
 
 const ApiBasePath = "/cds/api"
 const ProfileApiPath = "profiles"
@@ -367,6 +368,17 @@ const (
 	// on one weak attribute (a shared city, a common given name) can never merge unattended.
 	MinAgreeingRulesForAutoMerge = 2
 
+	// RejectionReconsiderMargin is how much stronger a match must be than the one an
+	// administrator rejected before the pair is put in front of them again.
+	//
+	// A rejection says two profiles are different people, which does not stop being true
+	// because their data changed. Re-proposing on any change makes the queue a treadmill;
+	// never re-proposing means genuinely new evidence is ignored. The margin is the gap
+	// between those, and it exists to absorb the small score movements that ordinary edits
+	// cause without amounting to new information.
+	// NOTE: like the thresholds, a defensible starting point rather than a calibrated one.
+	RejectionReconsiderMargin = 0.05
+
 	// ScorePenaltyOffset is subtracted from the auto-merge threshold when capping a
 	// score just below it. The small gap keeps the score detectable as sub-threshold
 	// while remaining high enough to route to manual review.
@@ -462,6 +474,13 @@ const (
 	// lookup and no second query. Tune per tenant.
 	RarityCommonMinProfiles = 50
 
+	// UnificationRulesCacheTTL bounds how long an organisation's rule set is reused.
+	//
+	// A write on this instance invalidates the cache immediately; the TTL only bounds how
+	// long another instance may serve a stale set after a rule changed elsewhere. Rules
+	// change rarely and every profile write reads them, so the trade is heavily one-sided.
+	UnificationRulesCacheTTL = 30 * time.Second
+
 	// RarityLookupCacheTTL bounds how long a value's frequency is reused. Frequencies
 	// move slowly, and the count is only used to pick a band.
 	RarityLookupCacheTTL = 10 * time.Minute
@@ -519,3 +538,8 @@ const (
 const (
 	DefaultCookieCleanupTime = 24 * 60 * 60 // 24 hours in seconds
 )
+
+// DefaultShutdownGracePeriod bounds the whole shutdown sequence when
+// shutdown.grace_period_seconds is omitted. The HTTP server, every worker and
+// every broker connection share it.
+const DefaultShutdownGracePeriod = 25 * time.Second
