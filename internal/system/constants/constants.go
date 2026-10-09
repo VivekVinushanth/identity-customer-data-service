@@ -365,10 +365,14 @@ const (
 	ScoreContradictionThreshold = 0.3
 
 	// MinAgreeingRulesForAutoMerge is how many rules must independently agree before a
-	// match may auto-merge. The exception is the org's highest-priority rule: when the
-	// operator's strongest configured signal is the one agreeing, it may carry an
-	// auto-merge alone. Any other single agreement is capped to manual review, so a match
-	// on one weak attribute (a shared city, a common given name) can never merge unattended.
+	// match may auto-merge. There are two exceptions, and both require the attribute to
+	// identify a person on its own: evidence the type marks HIGH, or the org's
+	// highest-priority rule when its evidence is not marked LOW.
+	//
+	// Priority alone is not enough. It says which signal to prefer among several, and an
+	// organisation with one configured rule has made no such statement — everything is
+	// rank 0. Letting rank promote LOW evidence would merge two people who merely share a
+	// name, which is the outcome LOW exists to prevent.
 	MinAgreeingRulesForAutoMerge = 2
 
 	// RejectionReconsiderMargin is how much stronger a match must be than the one an
