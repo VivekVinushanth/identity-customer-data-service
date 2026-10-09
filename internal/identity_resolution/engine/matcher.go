@@ -104,23 +104,29 @@ func matchName(val1, val2 string, mode string) float64 {
 	return jwScore
 }
 
+// matchPhone compares two written numbers as numbers rather than as strings of digits.
+//
+// Under strict matching the two spellings must be identical. Otherwise they are resolved into
+// country code and national significant number first, so the same subscriber written
+// internationally, nationally, with a trunk zero or behind a "00" prefix all compare equal —
+// and two subscribers who merely share a tail do not.
+//
+// This replaced a comparison of the last PhoneSuffixBlockingLength digits. That window sits
+// inside the subscriber number and excludes the operator or area code, so it could not tell
+// +94 77 123 4567 from +94 70 123 4567, nor one national number from the same digits in
+// another country. The suffix is still how phone blocking keys are built — it is a reasonable
+// way to gather candidates, just not to decide between them.
 func matchPhone(val1, val2 string, mode string) float64 {
-	n1 := normalization.NormalizePhone(val1)
-	n2 := normalization.NormalizePhone(val2)
-
-	if n1 == n2 {
+	if normalization.NormalizePhone(val1) == normalization.NormalizePhone(val2) {
 		return 1.0
 	}
 	if mode == constants.UnificationModeStrict {
 		return 0.0
 	}
-	if len(n1) >= constants.PhoneSuffixBlockingLength && len(n2) >= constants.PhoneSuffixBlockingLength {
-		suffix1 := n1[len(n1)-constants.PhoneSuffixBlockingLength:]
-		suffix2 := n2[len(n2)-constants.PhoneSuffixBlockingLength:]
-		if suffix1 == suffix2 {
-			return constants.PhoneSuffixMatchScore
-		}
+	if normalization.SamePhoneNumber(val1, val2) {
+		return 1.0
 	}
+
 	return 0.0
 }
 

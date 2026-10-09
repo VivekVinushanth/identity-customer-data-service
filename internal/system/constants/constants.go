@@ -517,13 +517,11 @@ const (
 	// This must be tuned based on a tenant's regional data.
 	PhoneSuffixBlockingLength = 7
 
-	// NOTE: There is no mathematically perfect constant for a partial phone match.
-	// This baseline dictates the score awarded when only the suffix matches,
-	// but the area/country codes actively differ or are completely missing.
-	// PhoneSuffixMatchScore is returned when two phone numbers share the same last
-	// PhoneSuffixBlockingLength digits but differ elsewhere (e.g., different country
-	// codes). A suffix-only match is strong evidence but not conclusive.
-	PhoneSuffixMatchScore = 0.9
+	// A suffix-only score used to live here, awarded when two numbers shared their last
+	// PhoneSuffixBlockingLength digits but differed before them. It is gone: that window
+	// excludes the operator and area codes, so it could not distinguish two subscribers,
+	// and no value for it was right. Numbers are now resolved into country code and
+	// national significant number and compared as numbers.
 )
 
 // Jaro-Winkler algorithm
