@@ -503,6 +503,13 @@ const (
 	// NOTE: There is no mathematically perfect universal constant for this value. Must be tuned per-tenant.
 	NamePhoneticExactJWMin = 0.9
 
+	// NameAmbiguousPartFloor is where a name sits when exactly one part differs but still
+	// shares its first letter. A diminutive and an initial that could stand for either of two
+	// people are the same evidence from the engine's side: too weak to merge on, too strong
+	// to discard. The floor keeps such a pair at the review bar instead of below it, where it
+	// would never be raised at all.
+	NameAmbiguousPartFloor = 0.75
+
 	// PhoneticAlternateScore is returned by PhoneticSimilarity when two names share a
 	// Double Metaphone alternate code but not the primary code. Lower than 1.0 to reflect
 	// the reduced certainty of an alternate encoding.

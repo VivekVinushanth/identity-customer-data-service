@@ -91,14 +91,60 @@ func matchName(val1, val2 string, mode string) float64 {
 		return 1.0
 	}
 
-	jwScore := algorithms.JaroWinkler(sorted1, sorted2)
-	phoneticScore := algorithms.PhoneticSimilarity(sorted1, sorted2)
+	tokens1, tokens2 := strings.Fields(sorted1), strings.Fields(sorted2)
 
-	if phoneticScore >= 1.0 {
-		if jwScore < constants.NamePhoneticExactJWMin {
-			return constants.NamePhoneticExactJWMin
+	// Different token counts mean a middle name or an initial on one side only, and there is
+	// no honest alignment to make. Compare the names whole in that case.
+	if len(tokens1) != len(tokens2) || len(tokens1) == 0 {
+		return nameSimilarity(sorted1, sorted2)
+	}
+
+	// Compare each part and take the weakest.
+	//
+	// Comparing the whole name as one string lets a matching surname carry a differing given
+	// name: "Ivan Petrov" and "Ivana Petrov" differ in the only part that tells two people
+	// apart, yet agree on 11 of 12 characters — and Jaro-Winkler's prefix bonus rewards the
+	// shared opening on top of that. Scoring parts separately means the part that disagrees
+	// sets the result instead of being averaged away.
+	weakest := 1.0
+	differing := 0
+	differingShareInitial := true
+
+	for i := range tokens1 {
+		if score := nameSimilarity(tokens1[i], tokens2[i]); score < weakest {
+			weakest = score
 		}
-		return jwScore
+		if tokens1[i] != tokens2[i] {
+			differing++
+			if tokens1[i][0] != tokens2[i][0] {
+				differingShareInitial = false
+			}
+		}
+	}
+
+	// One differing part that still shares its first letter is ambiguous rather than absent:
+	// a diminutive ("Dmitri"/"Dima") and an initial standing for either of two people
+	// ("Kevin"/"Katherine" Jones) look alike from here. Neither is enough to merge on, and
+	// both are worth a person's attention, so the score is held at the review bar rather than
+	// allowed to fall out of sight.
+	if weakest < constants.NameAmbiguousPartFloor && differing == 1 && differingShareInitial &&
+		len(tokens1) > 1 {
+		return constants.NameAmbiguousPartFloor
+	}
+
+	return weakest
+}
+
+// nameSimilarity compares two name strings, letting names that sound alike score as alike even
+// when they are spelled differently.
+func nameSimilarity(a, b string) float64 {
+	if a == b {
+		return 1.0
+	}
+
+	jwScore := algorithms.JaroWinkler(a, b)
+	if algorithms.PhoneticSimilarity(a, b) >= 1.0 && jwScore < constants.NamePhoneticExactJWMin {
+		return constants.NamePhoneticExactJWMin
 	}
 
 	return jwScore
