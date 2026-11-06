@@ -1,13 +1,13 @@
 # CDS / CDM — Full Context
 
-> **Version: `v0.6.1+3178ceb`** — code-reconciled **2026-11-02**. Previous baseline: `v0.4.1+a9fdadd` (2026-10-26).  
-> **Source-of-truth commit:** `3178ceb5c389910f47bd051ad799c5d32aebc821` (`wso2/identity-customer-data-service`, `main`); **previous source-of-truth:** `a9fdadd78e5b575865ee9ed0d2ee99af40d6b3ae`.  
-> **Canonical living source:** `/WSO2-CDS/cds-context.md`; replace this file *in place*, never maintain an additional active context copy.  
-> **Version semantics:** `version.txt = v0.6.1`; `install/helm/Chart.yaml version = 0.0.38` and `appVersion = "0.0.1"` (independent, stale placeholder). The `+3178ceb` qualifier identifies the reviewed code, **not** a release tag.
+> **Version: `v0.7.0+cb8c11c`** — code-reconciled **2026-11-06**. Previous baseline: `v0.6.1+3178ceb` (2026-11-02).  
+> **Source-of-truth commit:** `cb8c11c37ef0d7a619c43bdc3ea1a74b24ea2c8d` (`wso2/identity-customer-data-service`, `main`); **previous source-of-truth:** `3178ceb5c389910f47bd051ad799c5d32aebc821`.  
+> **Canonical living source:** [`VivekVinushanth/identity-customer-data-service` / `cds-context-showcase` / `cds-context.md`](https://github.com/VivekVinushanth/identity-customer-data-service/blob/cds-context-showcase/cds-context.md). ChatGPT Project Sources and `/WSO2-CDS/cds-context.md` Library are separately refreshed snapshots, not the live authority. Preserve `cds-showcase-visual-preview.html`.  
+> **Version semantics:** `version.txt = v0.7.0`; `install/helm/Chart.yaml version = 0.0.39` and `appVersion = "0.0.1"` (independent placeholder). The `+cb8c11c` qualifier identifies the reviewed code, **not** proof that a GitHub release or production deployment exists.  
 >
-> **Authority & labels.** Go code/SQL/actual route registrations are authoritative when PR descriptions, repository docs or API specs disagree. Markers **Implemented**, **Operational caveat**, **Known gap**, and **Intent / roadmap** distinguish deployed-in-code behavior from future plans. GitHub merge does not by itself prove production deployment.
+> **Authority & labels.** Go code/SQL/actual route registrations are authoritative when PR descriptions, repository docs or API specs disagree. Markers **Implemented**, **Operational caveat**, **Known gap**, and **Intent / roadmap** distinguish in-code behavior from future plans. GitHub merge does not by itself prove production deployment.
 >
-> **Latest reviewed delta (`a9fdadd` → `3178ceb`).** 84 commits including merges and release automation. Product changes span typed deterministic/fuzzy identity resolution, consent-sensitive review decisions, B2B child organization routing and resource sharing, org-isolated reads, finer-grained permissions, configuration/Helm, migrations, test coverage and Go toolchain security. The change is **not** a commit-history report; grouped intents and details follow in their relevant context sections. Key PRs: [#307](https://github.com/wso2/identity-customer-data-service/pull/307), [#334](https://github.com/wso2/identity-customer-data-service/pull/334), [#335](https://github.com/wso2/identity-customer-data-service/pull/335), [#336](https://github.com/wso2/identity-customer-data-service/pull/336), [#338](https://github.com/wso2/identity-customer-data-service/pull/338), [#339](https://github.com/wso2/identity-customer-data-service/pull/339), [#340](https://github.com/wso2/identity-customer-data-service/pull/340), [#341](https://github.com/wso2/identity-customer-data-service/pull/341), [#350](https://github.com/wso2/identity-customer-data-service/pull/350), [#320](https://github.com/wso2/identity-customer-data-service/pull/320), [#355](https://github.com/wso2/identity-customer-data-service/pull/355), [#356](https://github.com/wso2/identity-customer-data-service/pull/356). PRs without assignees use their authors as owners; `VivekVinushanth` for #307/#334/#335/#336/#338/#339/#341/#350 and `SujanSanjula96` for #320/#340/#355/#356.
+> **Latest reviewed delta (`3178ceb` → `cb8c11c`).** 13 upstream commits reported by GitHub comparison, including merges and release/version automation. Three product/engineering intents: **(1)** explain human-review routing and preserve *pre-cap similarity* separately from routing score ([#354](https://github.com/wso2/identity-customer-data-service/pull/354), `VivekVinushanth`); **(2)** correct CDS enablement for a primary organization with a parent, storing the primary org before enabling ([#359](https://github.com/wso2/identity-customer-data-service/pull/359), `SujanSanjula96`); **(3)** migrate tenant-scoped persisted data from mutable `org_handle` to stable `org_id` with phased PostgreSQL schema upgrades ([#357](https://github.com/wso2/identity-customer-data-service/pull/357), `SujanSanjula96`). User-facing URL paths remain handle-based. `version.txt` advanced through v0.6.2 and v0.6.3 to v0.7.0, with Helm chart `0.0.39`; these version changes are not themselves product capabilities. No separate email, analytics engine, model scoring API, or verified deployment is implied.
 
 ---
 
@@ -92,13 +92,15 @@ Key benefits:
 
 ## 3. Repository & Runtime Architecture
 
-### Current architecture — 2026-11-02 (Implemented)
+### Current architecture — 2026-11-06 (Implemented)
 
-Two new domain families sit beside `profile`, `profile_schema`, `consent`, and `unification_rules`:
+**Current persistent-org key and review evidence (new at `cb8c11c`).** The store domain now persists an immutable `org_id` instead of mutable organization handles. `internal/system/orgkey` supplies `ForRead`/`ForWrite`/`Resolve` using the `organizations` table, a 5-minute known-ID cache, a 1-minute unknown cache, and conditional IS primary-org bootstrap on writes; the resolver is registered even if the B2B organization-management API switch is off. `internal/system/database/{orgphase.go,model/orgtokens.go}` renders phase-dependent SQL tokens while preserving one organization bind argument. HTTP paths, tokens, API org handles, workers and queue messages still carry handles, which stores resolve to stable IDs. `internal/identity_resolution/model/explanation.go` and the scorer now produce structured reasons and per-rule observations persisted in `review_tasks.match_reason`; no new route or DDL is introduced by this review change. See §§8–9, 13, 17–18.
+
+The existing domain families beside `profile`, `profile_schema`, `consent`, and `unification_rules` remain:
 
 - `internal/identity_resolution/{engine,handler,model,provider,service,store,worker}`: rule-by-rule deterministic and tolerant comparisons; normalized exact/phonetic/LSH blocking; bounded candidate retrieval; score/verdict routing; pending review, resolution and durable rejection evidence. `internal/system/services/identity_resolution_service.go` registers the two review routes. It is integrated with profile/unification worker paths rather than a second independent matching system.
 - `internal/organization/{handler,model,service,store,suborg}`, `internal/sharing/{handler,model,service,store}` and `internal/system/idp`: tenant-path org resolution, org-tree sync and events, policy reach and target validation, effective inherited/shared schema and rules, child enablement. The shared mux registers organization handlers only when `organization_management.enabled` is true; the HTTP tenant dispatcher itself understands both primary and `/o/{org_id}` paths.
-- `internal/system/database/rows` normalizes database row/value handling; `internal/system/database/scripts/queries_organization.go` and `queries_sharing.go` add prepared statements; a bounded recursive ancestor query has a 64-hop limit. The `org_handle` tenant key remains fundamental for isolation.
+- `internal/system/database/rows` normalizes database row/value handling; `internal/system/database/scripts/queries_organization.go` and `queries_sharing.go` add prepared statements; a bounded recursive ancestor query has a 64-hop limit. Organization isolation is now keyed in storage by `org_id`; `org_handle` continues as the external routing and caller context key, resolved through `organizations`.
 
 **Dataflow:** `HTTP tenant dispatcher → token/org authorization → profile handler / worker → effective rules and schema → blocking candidate lookup → evidence scorer → auto-merge OR review/rejection`; child-org requests also traverse organization access and effective shared-resource policy checks. No separate standalone service, third-party ML scoring API, or new message-broker type is established by this delta.
 
@@ -106,10 +108,10 @@ Two new domain families sit beside `profile`, `profile_schema`, `consent`, and `
 | Property | Value |
 |---|---|
 | Repo | `wso2/identity-customer-data-service` |
-| Language | Go — `go 1.26.9` in `go.mod`; README states Go 1.26+ |
+| Language | Go — `go 1.26.10` in `go.mod` and `Dockerfile`; README states Go 1.26+ |
 | License | Apache-2.0 |
-| Version pinned here | Snapshot label `v0.4.1+a9fdadd`; `version.txt` remains the published release `v0.4.1` (2026-10-14). The release builder owns version bumps (§18). |
-| Last actual release | `v0.4.1` (published 2026-10-14; preceded by `v0.4.0` on 2026-10-13) |
+| Version pinned here | Code snapshot `v0.7.0+cb8c11c` (2026-11-06); `version.txt` is `v0.7.0`. The version label is not a deployment guarantee. |
+| Release publication | `v0.4.1` (2026-10-14) was the last individually checked published release in an older snapshot; publication of later `version.txt` values was **not independently verified** in this review. |
 | Datastore | **Two options.** Inbuilt SQLite (`datasource.type: sqlite`, **the default when unset**) or PostgreSQL (`postgres`). `dbscripts/sqlite.sql` is embedded and applied by the server; `dbscripts/postgres.sql` is applied by the operator. |
 | SQLite driver | `modernc.org/sqlite v1.53.0` (pure Go — no CGO, no external server) |
 | HTTP | Go stdlib `net/http` + `ServeMux` with method+pattern routing (`"GET /path/{id}"`) |
@@ -229,6 +231,8 @@ Both SQLite and PostgreSQL are now process-scoped shared pools. A store's `DBCli
 ## 4. Routing & URL Structure
 
 ### Current path additions (Implemented; supersedes primary-only statements below)
+
+**No route rename at `cb8c11c`.** `/t/{org_handle}/...` and child `/t/{primary_handle}/o/{org_id}/...` are unchanged. The `org_handle` JSON fields are unchanged; the new `org_id` belongs to persistence and internal lookups, not a breaking client URL change. Review-task response fields *did* change; see §§8 and 13.
 
 - **Primary:** `/t/{primary_handle}/cds/api/v1/...`; **child organization:** `/t/{primary_handle}/o/{org_id}/cds/api/v1/...`. The dispatcher resolves the child `org_id` into its actual `org_handle`, stores both the effective handle and org ID in context, and strips the prefix before passing to the shared route mux. A child handle on a primary path is rejected; an unknown/mismatched child identifier is not permitted. `ExtractOrgBasePath` retains the correct prefix for constructed links.
 - **Review queue:** `GET /identity-resolution/review-tasks`; **resolve:** `POST /identity-resolution/review-tasks/{taskId}/resolve`. These are implemented in `internal/system/services/identity_resolution_service.go` and handlers. Resolve carries approval/rejection; a successful approval may irreversibly unify profiles.
@@ -392,6 +396,8 @@ Two distinct auth paths in `internal/system/security/middleware.go`:
 
 ### Current matching and child enablement settings (Implemented)
 
+**Primary-org enable fix ([#359](https://github.com/wso2/identity-customer-data-service/pull/359)).** An organization returned by IS `/organizations/self` is accepted as a primary CDS tenant even when it has a parent in a broader super-organization tree. When organization management is enabled, `PATCH /config` now calls `EnsurePrimary` **before** persisting newly enabled CDS state. Failure therefore leaves CDS disabled so a retry can safely initialize the missing primary record; previously enabled-first behavior could strand the organization.
+
 | Key | Current default / behavior |
 |---|---|
 | `auto_merge_enabled` | `true` if unset; explicit `false` routes qualifying matches to review rather than auto-merge |
@@ -422,7 +428,7 @@ API surface is narrower than the internal model:
 
 `initial_schema_sync_done` is system-managed and not exposed for write.
 
-Persisted in the `cds_config` table as `(org_handle, config, value)` rows keyed by the constants `cds_enabled`, `initial_schema_sync_done`, `system_applications`.
+Persisted in the `cds_config` table as `(org_id, config, value)` rows keyed by the constants `cds_enabled`, `initial_schema_sync_done`, `system_applications`. The API still accepts `org_handle`; stores resolve it to `org_id`.
 
 ### The `cds_enabled` gate
 
@@ -432,7 +438,7 @@ Persisted in the `cds_config` table as `(org_handle, config, value)` rows keyed 
 
 ## 7. Applications & System Apps
 
-The `applications` table maps `(org_handle, client_id) → app_id`.
+The `applications` table maps `(org_id, client_id) → app_id` (unique in storage). Requests still resolve `client_id` under the externally supplied organization handle.
 
 ### Application identifier mode
 
@@ -473,11 +479,15 @@ The `applications` table maps `(org_handle, client_id) → app_id`.
 
 ### Current model extensions — code reconciled
 
+**Current physical organization identity ([#357](https://github.com/wso2/identity-customer-data-service/pull/357)):** `profiles`, `profile_reference` (including `reference_profile_org_id`), `profile_schema`, `unification_rules`, `applications`, `consent_categories`, `cds_config`, `profile_unification_modes`, `profile_unification_triggers`, `blocking_keys`, `review_tasks`, and `rejection_pairs` persist `org_id`; they no longer persist `org_handle` in fresh-install schemas. `organizations(org_id, org_handle, ...)` is the authoritative handle-to-ID mapping. API DTOs and worker/queue messages may still use `org_handle`. Profile `location` is constructed on read instead of being trusted as a stale persisted URL after an org-handle rename.
+
+**Review evidence ([#354](https://github.com/wso2/identity-customer-data-service/pull/354)):** the database column `review_tasks.match_score` and `rejection_pairs.match_score` now store similarity **before** routing caps, not the capped final score; `review_tasks.match_reason` stores the structured JSON `explanation` rather than staying unused. Review responses expose `explanation` and per-rule `score_breakdown`, but no longer expose the top-level `match_score` or old `match_reason`. Previously created tasks may have NULL explanations and legacy capped scores; no schema migration is needed solely for this change.
+
 Identity resolution adds `blocking_keys` (normalized exact, Double Metaphone and LSH band keys), `review_tasks` (`match_score`, `status`, `match_reason`, `score_breakdown`, resolver metadata) and `rejection_pairs` (canonical ordered pair, score/breakdown at rejection, actor/time). Rules gain `attribute_type`, `unification_method`, nullable `match_strength`/`mismatch_strength`; `NULL` strengths mean derive from type. Derived `origin`, `owner_org_handle`, `state` on effective shared read projections are not persisted to rule rows.
 
 B2B adds `organizations` (`org_id`, `org_handle`, `parent_org_id`, `primary_org_id`, status), `resource_sharing_policy`, `resource_sharing_policy_target`. **SQL names are `resource_sharing_policy*`, NOT `cds_share_policy*`**, contrary to one PR's draft description. Ownership and initiator are explicit IDs; targets encode ALL_CHILDREN / ORG / ORG_SUBTREE reach.
 
-`org_handle` filtering now participates in more profile, consent-category, rule, edit and delete queries (especially PR #340); accidental resource-ID knowledge must not cross org boundaries. For child effective schema/rules, local and shared resources are resolved through owner/ancestor and policy-state rules, not copied into each child as durable duplicates.
+Organization-scoped reads, edits and deletes continue enforcing tenant boundaries (especially PR #340), now using resolved `org_id` in persisted SQL. Accidental resource-ID knowledge must not cross org boundaries. For child effective schema/rules, local and shared resources are resolved through owner/ancestor and policy-state rules, not copied into each child as durable duplicates.
 
 
 ### Current model
@@ -524,6 +534,8 @@ These back the `profile_unification_modes` / `profile_unification_triggers` tabl
 ## 9. Profiles
 
 ### Current isolation and identity-resolution integration (Implemented)
+
+**Store key / profile behavior at `cb8c11c`.** Public profile methods still accept an org handle, while underlying queries filter the stable `org_id` returned by `orgkey.ForRead`/`ForWrite`; unknown organizations read as empty and cannot silently write to arbitrary IDs. `profiles.org_id` is durable, and profile `meta.location` is reconstructed on reads using the currently resolved handle so handle renames do not strand old links. The profile filter SQL builders now independently validate interpolated attribute keys against `FilterRegex`, returning HTTP 400 for unsafe keys even if a caller bypassed service-layer validation ([#357](https://github.com/wso2/identity-customer-data-service/pull/357)).
 
 - Single-record reads/updates/deletes and downstream retrievals pass `(profileId, orgHandle)` into stores; `GetProfile` / `GetProfileWithOptions` require an explicit org handle. PR #340 also scopes consent-category reads, selected rule reads/deletes and rejected/approved review resolution lookups, with SQLite/PostgreSQL integration cases for cross-org access. This is important when IDs are globally unique but knowledge of an ID must not confer access.
 - Creation or updates affecting matchable values can schedule identity resolution; re-evaluation occurs only when matched values actually change. The worker fetches fresh org-scoped profile state, performs bounded candidate selection, evaluates active *effective* rules, filters unmergeable permanent profiles with different user IDs, then merges or inserts review tasks. It retains existing merge-shape rules (permanent vs temporary and master/reference lineage), and attributes merge reasons to the decisive matching rule when determinable.
@@ -716,6 +728,8 @@ Cookie domain comes from `auth_server.cookieDomain`.
 
 ### Effective schema and hierarchical sharing (Implemented; organization-management gated)
 
+**Persistence note:** `profile_schema` now keys owned rows with `org_id` rather than a changeable handle. Effective read projections still expose owner organization handles where defined; sharing-policy records already used organization IDs. There is no changed public schema route or attribute-merge strategy in this delta.
+
 Primary-org identity attributes and mandatory identity consent are inherited in suborganizations. Non-complex `traits` and `application_data` attributes may be shared with all descendants or selected child/subtrees; identity attributes, complex or subattributes are not directly shareable. Read projections distinguish `OWNED`, `INHERITED` and `SHARED` and resolve active/conflicted resources. Local attributes take precedence; a shared duplicate that conflicts on name/application or owner becomes non-effective. Create/update/delete of a child-owned schema is rejected by child write guard. Policy changes and resource deletion affect computed effective availability; the source resource remains primary-owned.
 
 **Interface:** `GetEffectiveProfileSchemaAttributes(ctx, orgHandle)` is used in profile/unification worker merges; attribute sharing handlers delegate policy CRUD to the sharing domain. Rule resolution must consult this effective model so a rule from an ancestor can refer to the correct visible attribute.
@@ -800,6 +814,8 @@ Attribute names carry the scope prefix: `identity_attributes.email`, `traits.pre
 ## 11. Consent Management
 
 ### Current org-scoped consent constraints (Implemented)
+
+**Persistence note:** `consent_categories` uses `org_id`; organization handle resolution occurs before org-scoped reads/writes. The per-profile consent, mandatory Identity Data and union-of-consented-categories semantics are unchanged by this migration. No new end-user consent UI is introduced.
 
 Consent category get/list queries are explicitly filtered by org; requested category IDs not defined for the effective organization are excluded before consent-driven profile projection. Child organizations inherit the mandatory primary identity-data category rather than declaring a separate mandatory category. This remains consent/category authorization and filtering, **not** a new consent UX flow or external consent standard. Helm deployment still needs the consent-category OAuth scope mapping gap resolved separately.
 
@@ -953,6 +969,8 @@ profile_consents
 
 ## 12. Unification Rules
 
+**Current storage note (`cb8c11c`).** Rule ownership is keyed by `org_id` in SQL even though the API/model still accepts or returns `org_handle` where appropriate. Effective inherited/shared rule computation remains organization-policy dependent. Rule evaluation and merge-routing algorithms did not change in PR #354; only the stored similarity and human-readable-explanation data changed (§13).
+
 Rules now support two concurrent matching modes rather than solely exact comparison. This is **implemented**, not merely a proposed fuzzy roadmap.
 
 ### Rule structure and validation
@@ -992,12 +1010,32 @@ Activating a rule can backfill profile blocking keys for its attribute in batche
 **User/product intent:** link fragments belonging to one person, including spelling variations, without auto-merging two different people. Automatic unification is not treated as the only successful result: borderline cases are first-class review tasks.
 
 1. **Changed matching evidence or indexed backfill.** A profile create/update/link or rule activation may trigger resolution; writes that do not change matchable values avoid redundant re-resolution. Existing user-ID matching and merge-lifecycle rules still apply.
-2. **Bounded blocking candidate discovery.** Normalize configured rule values; generate exact, phonetic (Double Metaphone), locality-sensitive hash bands or phone suffix keys according to attribute type/mode. `blocking_keys` uses `(org_handle, attribute_name, key_value, profile_id)` as natural PK, 8 partitions on org handle then 4 on key value in PostgreSQL (32 leaf partitions), index on `(org_handle, profile_id)`. Candidate lookup groups keys by attribute/kind and limits results rather than scanning the full profile population. Stored keys must match enabled mode.
+2. **Bounded blocking candidate discovery.** Normalize configured rule values; generate exact, phonetic (Double Metaphone), locality-sensitive hash bands or phone suffix keys according to attribute type/mode. `blocking_keys` uses `(org_id, attribute_name, key_value, profile_id)` as natural PK, 8 hash partitions on **org ID** then 4 on key value in PostgreSQL (32 leaf partitions), with index on `(org_id, profile_id)`. Candidate lookup groups keys by attribute/kind and limits results rather than scanning the full profile population. Stored keys must match enabled mode.
 3. **Retrieve candidate profile state and evaluate typed rules.** Jaro-Winkler/parts-based names, normalized email, E.164-aware phone comparison, Jaccard for location where configured; deterministic rules use exact matching. `UNKNOWN` accounts for absent, sentinels, role addresses and otherwise nonidentifying values. Each applicable rule carries raw score, verdict and evidence strengths. `AGREE` means score ≥ review threshold; `DISAGREE` ≤ 0.3; other present comparisons may be `INCONCLUSIVE`.
-4. **Priority waterfall, not average.** The first `AGREE` in rule run-order sets primary score. A perfect `UNIQUE_ID` match or an agreeing deterministic rule when `deterministic_match_decisive = true` returns final **1.0**. Otherwise, a `HIGH`-mismatch `DISAGREE`, a majority of other applicable contradictions, or weak/uncommon-value lone-agreement checks may cap final score to `auto_merge_threshold - 0.01`. The breakdown preserves **raw per-attribute** similarity, while final routing score includes caps.
+4. **Priority waterfall, not average.** The first `AGREE` in rule run-order sets primary score. A perfect `UNIQUE_ID` match or an agreeing deterministic rule when `deterministic_match_decisive = true` returns final **1.0**. Otherwise, a `HIGH`-mismatch `DISAGREE`, a majority of other applicable contradictions, or weak/uncommon-value lone-agreement checks may cap final score to `auto_merge_threshold - 0.01`. The breakdown preserves **raw per-attribute** similarity. `EvaluateCandidate.Score` retains the capped routing score, while `EvaluateCandidate.Similarity` is the pre-cap primary-rule similarity (or highest applicable value when nothing agrees). Neither verdict thresholds nor merge-routing behavior was changed by PR #354.
 5. **Decision by org settings.** With default `auto_merge_enabled = true`, `auto_merge_threshold = 1.0`, `manual_review_threshold = 0.75`, a final perfect score auto-merges; scores ≥0.75 but under 1.0 become review tasks; lower scores are unique/nonactionable in the write workflow. `auto_merge_enabled = false` disables unattended union. Child organizations inherit primary thresholds.
 6. **Merge safety and human review.** Candidate and incoming profiles must be from the same org, and two permanent profiles with different user IDs are not mergeable. Failed/unmergeable auto-merge may fall back to review. `GET /identity-resolution/review-tasks` enumerates pending tasks; `POST /identity-resolution/review-tasks/{taskId}/resolve` approves or rejects with resolver metadata. Approval can change master/reference structure and is not automatically reversible. Review scopes split view vs update.
-7. **Rejections survive ordinary edits.** The canonical unordered pair resides in `rejection_pairs` with score and raw breakdown seen at rejection. `ShouldReconsider` requires a materially higher score or a newly agreeing rule; ordinary unrelated edits do not reopen. A reconsidered rejection is **never auto-merged**: the worker reopens even an existing `REJECTED` task and asks the administrator again. SQLite string-vs-byte breakdown decoding is handled; see PR [#350](https://github.com/wso2/identity-customer-data-service/pull/350).
+7. **Rejections survive ordinary edits.** The canonical unordered pair resides in `rejection_pairs` with **pre-cap similarity** and raw breakdown seen at rejection. `ShouldReconsider` requires a materially higher score or a newly agreeing rule; ordinary unrelated edits do not reopen. A reconsidered rejection is **never auto-merged**: the worker reopens even an existing `REJECTED` task and asks the administrator again. SQLite string-vs-byte breakdown decoding is handled; see PR [#350](https://github.com/wso2/identity-customer-data-service/pull/350).
+
+### Review-task explanation and similarity — [#354](https://github.com/wso2/identity-customer-data-service/pull/354) (Implemented; API response change)
+
+`EvaluateCandidate` returns `{ Score, Similarity, Breakdown, Explanation }`; `ScoreCandidate` remains a compatibility wrapper returning the original capped score and raw breakdown. **Score** alone routes merge versus human review versus no action; **Similarity** measures the pair before policy caps and is stored as the internal `match_score` on review tasks/rejected pairs and used for fuzzy-search ranking/filtering. A 1.0 similarity can therefore appear on a review-held pair with a lower final routing score. `review_tasks.match_reason` is existing storage reused for JSON explanation; no DDL was added in #354.
+
+`GET /identity-resolution/review-tasks` returns each task with optional `explanation: { rules: [...], reasons: [...] }`. Each rule outcome includes ID/name/property/type/method/priority, evidence strengths, verdict `AGREE | DISAGREE | INCONCLUSIVE | UNKNOWN`, optional score (omitted for UNKNOWN), and `primary` on the decisive agreeing rule. Reasons are stable codes with optional `rule_ids`; optional reason-specific fields include `threshold`, `shared_by_at_least`, and `previous_similarity`. A scorer records **all** applicable reasons even if multiple conditions hold; worker-owned reasons are added for failed merges, previously rejected pairs, and the one-merge-per-run limit.
+
+| Reason code | Meaning / source |
+|---|---|
+| `BELOW_AUTO_MERGE_THRESHOLD` | Primary evidence below the configured auto-merge threshold; records historical `threshold` |
+| `DISCRIMINATING_MISMATCH` | High-strength contradictory evidence from another rule |
+| `CONFLICTING_EVIDENCE` | Majority of other applicable signals contradict the match |
+| `WEAK_SOLE_EVIDENCE` | One weak/insufficiently identifying agreeing rule |
+| `COMMON_VALUE` | Lone agreement uses a value shared by many profiles; includes `shared_by_at_least` |
+| `AUTO_MERGE_DISABLED` | Final score qualifies but organization setting prevents unattended merge |
+| `REJECTION_RECONSIDERED` | New evidence reopens a previously rejected pair; includes `previous_similarity` and newly agreeing rule IDs |
+| `AUTO_MERGE_FAILED` | A qualifying unattended merge could not be performed |
+| `MERGED_WITH_ANOTHER_PROFILE` | Only one candidate was merged in this worker evaluation; another qualifying pair needs review |
+
+**Breaking read-response change:** review tasks no longer serialize the previous top-level `match_score` or legacy `match_reason`; use `explanation` (and `score_breakdown`). An older Console that reads top-level `match_score` must be updated before rolling out this server response. Legacy tasks retain the earlier capped stored score and may lack `explanation` (`NULL match_reason`); they are still returned. `Rejection.ShouldReconsider` now compares similarity-to-similarity and recognizes a newly agreeing rule, avoiding a cap-induced inability to reopen; a reconsidered pair is still never auto-merged. SQLite scanning now correctly handles stored scores represented as integers (`1`) as well as floating-point values. Tests cover explanation codes, scores, review/rejection persistence and reconsideration; no separately registered `/explain` endpoint exists.
 
 ### Critical defaults, algorithm constraints and examples
 
@@ -1005,7 +1043,7 @@ Activating a rule can backfill profile blocking keys for its attribute in batche
 - Example: same exact email with `deterministic_match_decisive` on → final 1.0 → eligible for automatic union despite other lower-priority concerns (legacy compatibility). An approximate 0.96 name alone with LOW match strength → capped below auto-merge, routed to review if above the review bar. Two different DOBs with HIGH mismatch strength can veto unattended merge unless a decisive exact rule short-circuits.
 - A phone comparator evaluates normalized subscriber numbers and returns **1.0 or 0.0**, not a 0.9 score for matching last-seven-digit suffix; that suffix is for blocking candidate lookup only. Do not treat candidate lookup as matching evidence.
 - `identity_resolution.fuzzy_matching_enabled = false` is a server gate across synchronous searches, async scoring and attribute backfill. Stored fuzzy rules remain intact; enabling later needs an index rebuild (activate each fuzzy rule again) to cover profiles indexed while off.
-- There is **no guarantee of a quality/safety model score explanation endpoint** beyond stored review evidence, reason strings and per-attribute breakdowns. Review UX enhancements, richer explanations and audit insights may be product intent; distinguish them from implemented API data.
+- A **structured review explanation now exists on the review-task response** (`explanation.rules`, `explanation.reasons`), not via a separate quality-model explanation endpoint. There is still no standalone explainability/audit endpoint, and no proof of production Console compatibility without its matching response-model update.
 
 ### Profile/master merge outcomes (carried forward)
 
@@ -1197,40 +1235,58 @@ func init() {
 
 ### New current SQL schema and migrations (Implemented)
 
+**Current key (`cb8c11c`): organization ID, not organization handle.** Fresh `dbscripts/postgres.sql` and `dbscripts/sqlite.sql` use `org_id` on tenant-scoped tables, with `organizations` retaining the sole `org_id` ↔ `org_handle` mapping. The `blocking_keys` partition root is now `org_id`. The existing B2B sharing tables already use organization IDs; request paths and API handles remain unchanged.
+
+**Existing PostgreSQL upgrade (PR [#357](https://github.com/wso2/identity-customer-data-service/pull/357)):**
+
+1. Apply prior additive `001` identity-resolution and `002` organization-management schemas if not already present; add nullable `org_id` columns with `003-org-id-add-columns-postgres.sql` (safe to re-run).
+2. Run servers with `org_id_migration.phase: dual_write` (writes handle and ID, reads handle). **Externally backfill** org IDs for existing rows by joining the `organizations` mapping. The server does **not** backfill historical rows for you; check for unresolved handles and ensure the org map is complete.
+3. Run `004-org-id-switch-constraints-postgres.sql` only after full backfill: it validates/set-not-null, builds org-ID indexes and unique keys using `CREATE INDEX CONCURRENTLY`, changes `cds_config` primary key, and rebuilds `blocking_keys` as 8×4 partitions keyed by org ID. The copy/swap takes an exclusive write lock on the blocking-key table; writers wait during the copy, though reads can continue until swap. Prefer a low-traffic window, observe invalid concurrent indexes and re-run only after correction.
+4. Advance runtime to `read_org_id` (still dual-writes, now reads/filters by ID), then `org_id_only` (reads/writes only ID). Use compatible schema and at most adjacent phases concurrently during rolling changes; incorrect phase/schema combinations fail rather than silently targeting the wrong columns.
+5. Only when **all** servers are on `org_id_only`, back up and run `005-org-id-drop-org-handle-postgres.sql` to remove legacy handle columns/indexes. This step is not rollback-friendly except from backup; older-phase binaries no longer work against dropped columns.
+
+**SQLite upgrade warning:** fresh embedded SQLite schema is `org_id`-only; an existing old SQLite database file keyed by `org_handle` is not supported by these migration scripts. Back up/export any needed evaluation data before deleting/recreating the old DB file. PostgreSQL migration tests exercise the three phases, install-schema parity, blocking keys, review tasks and rejections; they are not proof that a production-sized backfill or IDP integration has been validated.
+
 - `dbscripts/migrations/001-identity-resolution-postgres.sql`: additive unification-rule typed/evidence fields plus `blocking_keys`, `review_tasks`, `rejection_pairs`, associated indexes and partitions. The `postgres.sql` fresh-install schema contains the new tables. **Do not assume a `merge_audit_log` table exists** merely from the PR prose: current inspected fresh-install SQL did not define it.
 - `dbscripts/migrations/002-organization-management-postgres.sql`: additive `organizations`, `resource_sharing_policy`, `resource_sharing_policy_target` and indexes. **The actual DDL uses `resource_sharing_policy*`**, not draft prose's `cds_share_policy*`.
 - SQLite current-install script and test setup schemas have matching functional tables, with SQL-dialect differences (JSONB/TEXT, partitioning). `test/schema/{schema_parity,migration_parity}_test.go` aims to detect schema drift.
 - **Deployment rule:** existing databases should run the additive migration scripts *before* enabling new features; fresh database bootstrap uses current complete scripts. No automatic backfill of fuzzy keys occurs merely because the switch was turned on. PostgreSQL 8×4 partition shape should be treated as deliberately measured, not casually changed during upgrades.
 
 
-Two scripts ship, defining the same 13 tables:
+Two fresh-install datasource scripts ship, defining the same **19** logical tables (including organizations, sharing, blocking, review and rejection tables):
 
 - `dbscripts/postgres.sql` — applied by the operator (`psql < ...`). Uses `CREATE TABLE` (no `IF NOT EXISTS`), `TIMESTAMPTZ ... DEFAULT now()`, `TEXT[]`, `jsonb` defaults, and creates the `pg_trgm` extension plus GIN indexes.
 - `dbscripts/sqlite.sql` — embedded in the binary (`dbscripts/embed.go`, `//go:embed`) and applied automatically on first start. Idempotent (`CREATE TABLE IF NOT EXISTS`), so re-applying is a no-op.
 
-The table/column list below is common to both.
+The following current table/column summary is common to both, with SQL-dialect-specific representation/partitioning differences.
 
 | Table | Purpose |
 |---|---|
-| `profiles` | `profile_id` PK, `user_id`, `org_handle`, `created_at`, `updated_at`, `location`, `origin_country`, `list_profile`, `delete_profile`, `traits` JSONB, `identity_attributes` JSONB |
-| `profile_reference` | `profile_id` PK, `org_handle`, `profile_status`, `reference_profile_id`, `reference_profile_org_handle`, `reference_reason` — the merge lineage |
+| `profiles` | `profile_id` PK, `user_id`, **`org_id`**, `created_at`, `updated_at`, `location`, `origin_country`, `list_profile`, `delete_profile`, `traits` JSONB, `identity_attributes` JSONB |
+| `profile_reference` | `profile_id` PK, **`org_id`**, `profile_status`, `reference_profile_id`, **`reference_profile_org_id`**, `reference_reason` — the merge lineage |
 | `application_data` | `app_data_id` PK, `profile_id` FK CASCADE, `app_id`, `application_data` JSONB, `UNIQUE(profile_id, app_id)` |
-| `applications` | `app_id` PK, `org_handle`, `client_id`, timestamps, `UNIQUE(org_handle, client_id)` |
-| `profile_schema` | `attribute_id` PK, `scope`, `org_handle`, `attribute_name`, `display_name`, `value_type`, `merge_strategy`, `application_identifier`, `mutability`, `multi_valued`, `canonical_values` JSONB, `sub_attributes` JSONB, `scim_dialect` |
-| `unification_rules` | `rule_id` PK, `org_handle`, `rule_name`, `property_name`, `property_id` FK → `profile_schema` CASCADE, `priority`, `is_active`, timestamps |
-| `consent_categories` | `id` PK, `org_handle`, `category_name`, `category_identifier` UNIQUE, `purpose`, `destinations` TEXT[], `is_mandatory` |
+| `applications` | `app_id` PK, **`org_id`**, `client_id`, timestamps, `UNIQUE(org_id, client_id)` |
+| `profile_schema` | `attribute_id` PK, `scope`, **`org_id`**, `attribute_name`, `display_name`, `value_type`, `merge_strategy`, `application_identifier`, `mutability`, `multi_valued`, `canonical_values` JSONB, `sub_attributes` JSONB, `scim_dialect` |
+| `unification_rules` | `rule_id` PK, **`org_id`**, `rule_name`, `property_name`, `property_id` FK → `profile_schema` CASCADE, `priority`, `is_active`, timestamps |
+| `consent_categories` | `id` PK, **`org_id`**, `category_name`, `category_identifier` UNIQUE, `purpose`, `destinations` TEXT[], `is_mandatory` |
 | `consent_category_attributes` | `category_id` FK CASCADE, `scope`, `attribute_name`, `attribute_id` FK → `profile_schema` CASCADE, `application_identifier`, `UNIQUE(category_id, scope, attribute_name, application_identifier)` |
 | `profile_consents` | `profile_id` FK CASCADE, `category_id` FK CASCADE, `consent_status`, `consented_at`, `UNIQUE(profile_id, category_id)` |
 | `profile_cookies` | `cookie_id` PK, `profile_id` FK CASCADE, `is_active` |
-| `cds_config` | `(org_handle, config)` PK, `value` — backs admin config |
-| `profile_unification_modes` | `org_handle`, `merge_type`, `rule`, `UNIQUE(org_handle, merge_type, rule)` — for the planned approval workflow |
-| `profile_unification_triggers` | `org_handle` UNIQUE, `trigger_type`, `last_trigger`, `duration` — for scheduled unification |
+| `cds_config` | **`(org_id, config)` PK**, `value` — backs admin config and org-tree sync status |
+| `profile_unification_modes` | **`org_id`**, `merge_type`, `rule`, `UNIQUE(org_id, merge_type, rule)` — scaffold for a planned approval workflow |
+| `profile_unification_triggers` | **`org_id`** UNIQUE, `trigger_type`, `last_trigger`, `duration` — scaffold for scheduled unification |
+| `organizations` | `org_id` PK, `org_handle` unique, name/parent/primary IDs, status and timestamps; the handle ↔ stable-ID mapping |
+| `resource_sharing_policy` | Resource type/ID, owning and initiating organization IDs, state and unique policy identity |
+| `resource_sharing_policy_target` | Sharing-policy target scope and `target_org_id`, composite PK |
+| `blocking_keys` | `(org_id, attribute_name, key_value, profile_id)` PK; PostgreSQL 8×4 hash partitioning |
+| `review_tasks` | Incoming/candidate pair, pre-cap `match_score`, `score_breakdown`, `match_reason` JSON explanation, status and resolution metadata, `org_id` |
+| `rejection_pairs` | Canonical ordered profile pair, `org_id`, pre-cap `match_score`, breakdown, rejecting actor and time |
 
-**Notable indexing (PostgreSQL):** composite `(org_handle, created_at, profile_id)` supporting cursor pagination; `(org_handle, user_id)` (also used by the bounded same-user unification lookup); `pg_trgm` GIN on `user_id` for contains-matching; GIN on `profiles.traits` and `profiles.identity_attributes` (the new rule-candidate JSONPath prefilter is tested for GIN eligibility); GIN on `application_data->'app_specific_data'`; `(org_handle, is_active, priority)` on unification rules.
+**Notable indexing (PostgreSQL):** composite `(org_id, created_at, profile_id)` supporting cursor pagination; `(org_id, user_id)` supporting same-user lookup; `pg_trgm` GIN on `user_id`; GIN on `profiles.traits`/`profiles.identity_attributes` and `application_data->'app_specific_data'`; `(org_id, is_active, priority)` on unification rules; `blocking_keys` partitions and indexes now start with `org_id`.
 
 > `CREATE EXTENSION IF NOT EXISTS pg_trgm` means the DB user needs extension-creation rights on first init.
 
-**Indexing on the inbuilt database:** the B-tree indexes carry over (`idx_profiles_org_created_profile`, `idx_profiles_org_user`, the three `profile_reference` indexes, both `application_data` indexes, both `profile_schema` indexes, both `unification_rules` indexes). The four GIN/trigram indexes have **no equivalent** — SQLite has neither `pg_trgm` nor GIN.
+**Indexing on the inbuilt database:** org-ID-prefixed B-tree indexes carry over (`idx_profiles_org_id_created_profile`, `idx_profiles_org_id_user`, `idx_profile_reference_org_id_status_profile`, schema/rule/review/rejection indexes), plus ordinary application-data indexes. PostgreSQL GIN/trigram indexes and partitioning have **no SQLite equivalents**.
 
 ### Inbuilt-database type & behaviour differences
 
@@ -1256,20 +1312,22 @@ Default pool size is 4 (`DefaultSQLiteMaxOpenConns`) — SQLite serialises write
 
 ## 18. Deployment & Configuration
 
-### Latest deployment state (`3178ceb`; Implemented / Operational caveats)
+### Latest deployment state (`cb8c11c`; Implemented / Operational caveats)
 
 | Surface | Current behavior |
 |---|---|
-| Product version | `version.txt = v0.6.1` (release automation; main commit is separate identifier) |
-| Helm chart | `version: 0.0.38`, `appVersion: "0.0.1"` placeholder; do not treat as matching product version |
+| Product version | `version.txt = v0.7.0` at code commit `cb8c11c`; distinguish it from a verified tag, image or rollout |
+| Helm chart | `version: 0.0.39`, `appVersion: "0.0.1"` placeholder; do not treat as matching product version |
 | Go toolchain | `go.mod`, `Dockerfile`, PR CI and release workflow pinned to **Go 1.26.10**, fixing a reported Go stdlib `crypto/x509` chain verification issue; pre-existing published images require **rebuild and re-scan**, not just a source merge |
 | Tolerant matching | `identity_resolution.fuzzy_matching_enabled: false` default; Helm values `cloud.deployment.cds.config.identityResolution.fuzzyMatchingEnabled`; moving off→on requires reindex |
 | Evidence override | `identity_resolution.allow_evidence_strength_override: false` default; Helm values `cloud.deployment.cds.config.identityResolution.allowEvidenceStrengthOverride` |
 | Child organizations | `organization_management.enabled: false` default; chart `cloud.deployment.cds.config.organizationManagement.enabled` (check exact rendered values/template spelling before automation) |
-| Database upgrades | Apply `001-identity-resolution-postgres.sql` and `002-organization-management-postgres.sql` as appropriate before feature enablement; fresh scripts already include tables |
+| Org-ID storage mode | `org_id_migration.phase` defaults to `org_id_only`; accepted `dual_write`, `read_org_id`, `org_id_only`. Helm values `cloud.deployment.cds.config.orgIdMigration.phase`; SQLite always ID-only. |
+| Review response | `explanation` replaces serialized `match_score`/`match_reason` on review-task JSON; update Console review clients before deployment, no new DDL (§13). |
+| Database upgrades | `003` add org-ID columns → `dual_write` + **external backfill** → `004` switch indexes/constraints + blocking-key re-partition → `read_org_id` → `org_id_only` → `005` drop old handle columns; see §17. Previous `001`/`002` prerequisites apply. Old SQLite files require backup/recreation. |
 | OAuth configuration | Include review view/update and sharing policy share_view/share_update in both IS scopes and CDS required scopes; child org scopes are distinct; chart consent-category scopes remain a known gap |
 
-**Feature rollout sequence:** migrate DB → deploy Go 1.26.10 rebuild → install/render new chart/config → ensure IS scopes and CDS API resource registration → enable `organization_management` (if needed) → synchronize organization tree and wait for `SYNCED` → set child access policies and optional resource shares → explicitly opt into fuzzy matching → rebuild affected keys and validate review queue, rejection and org-isolation flows. Use a staged/test environment; GitHub merges are not evidence of successful live deployment.
+**Feature rollout sequence:** for an existing PostgreSQL installation, first follow the phased org-ID migration and validate the backfill/`blocking_keys` swap in §17; for fresh installs use org-ID-only schemas. Then deploy a Go 1.26.10 build → install/render chart/config → ensure IS scopes and CDS API resource registration → enable `organization_management` (if needed) → synchronize organization tree and wait for `SYNCED` → set child access policies and optional resource shares → explicitly opt into fuzzy matching → rebuild affected keys and validate review queue, rejection, review-API consumer compatibility and org-isolation flows. Use a staged/test environment; GitHub merges are not evidence of successful live deployment.
 
 **Release-note workflow since #335:** the type-labeling workflow no longer turns missing PR type into a failing check. It copies type labels from linked issues where possible, otherwise defaults to `Type/Bug` with a warning; `continue-on-error` prevents a labeling inconvenience from blocking CI. Events are narrowed to open/reopen/edit/label/unlabel. `.github/release.yml` still groups generated release notes and retains an Other Changes fallback. This is repository automation, not CDS API behavior.
 
@@ -1406,6 +1464,9 @@ Documented at `docs/guides/local-development.md`, linked from `docs/README.md`.
 | `server_url` | Public base URL used to construct `Location` headers |
 | `auth_server` | host/port, IS endpoints, `client_id`/`client_secret`, admin credentials, `introspection_client_id`/`_secret`, `isSystemAppGrantEnabled`, `cookieDomain`, `required_scopes` |
 | `application_identifier_type` | `client_id` (default) or `app_id` |
+| `idp` | `type: wso2is` default (organization resolver uses configured identity provider) |
+| `organization_management` | `enabled: false` by default for B2B APIs, not for baseline org-ID storage resolution |
+| `org_id_migration` | `phase: org_id_only` default; other PostgreSQL transition phases `dual_write`, `read_org_id`; SQLite always ID-only |
 | `sync.schema` | `enabled`, `interval` (3600s) |
 | `cleanup.cookie` | `enabled`, `interval` (86400s), `batch_size` (500) |
 | `shutdown` | `grace_period_seconds` — bounds HTTP shutdown + all workers + broker close before the DB pool closes; default/shipped value `25`, negative values rejected at startup |
@@ -1557,7 +1618,7 @@ CDS approach: **C1** as central master data authority ingesting from all three; 
 
 ## 20. MVP & Roadmap
 
-**Reconciliation as of 2026-11-02:** the previously planned tolerant identity-resolution pipeline and B2B organization-management APIs **now exist in main** (see §§3–13 and 17–18). Treat prior roadmap references to *building* those foundations as historically motivated intent, not as a description of the current absence. Production adoption, advanced UI/explanations, confidence instrumentation, managed rollout and broader intelligence/IDV integrations remain separate initiatives and are not established by these commits.
+**Reconciliation as of 2026-11-06:** typed fuzzy identity resolution and B2B organization management were already implemented at the previous baseline; PR #354 adds structured review evidence and pre-cap similarity, PR #359 fixes primary-org enablement, and PR #357 switches persistent tenant keys to `org_id` with phased PostgreSQL migration. The new review response requires client compatibility work, and migration requires an externally performed backfill. No verified commercial rollout, advanced analytics, finished Console review UX or broader intelligence/IDV integration follows merely from a code merge. Keep old intent/roadmap items distinct from delivered code.
 
 
 ### Implemented today
@@ -1565,6 +1626,8 @@ CDS approach: **C1** as central master data authority ingesting from all three; 
 - **Profile management** — create/init anonymous profiles, cursor-paginated list with filters and attribute projection, get, patch, soft delete, `/Me` via cookie
 - **Profile schema management** — per-scope attribute CRUD, typed validation, canonical values, complex sub-attributes
 - **Unification rules** — CRUD with name and priority uniqueness
+- **Reviewable identity resolution** — typed fuzzy/deterministic comparators, bounded candidate blocking, full per-rule `explanation` and reason codes, pre-cap similarity for review/rejection/search; review and resolve endpoints (server code only; consumer UI must match #354)
+- **Stable organization storage** — per-organization `org_id` persistence, handle-to-ID resolution, phased PostgreSQL migration, child-organization access and resource sharing where enabled
 - **Profile unification** — async worker, `userId` invariant + priority-ordered rules, **bounded database-backed candidate discovery with deterministic oldest-match selection**, lazy application-data hydration for the selected pair, four merge cases, schema-driven attribute merging
 - **Consent management** — categories, mandatory Identity Data, per-profile records, consent-filtered reads, system-app bypass
 - **IS integration** — user lifecycle + session event sync, claim sync, event-driven and scheduled schema sync
@@ -1581,7 +1644,7 @@ CDS approach: **C1** as central master data authority ingesting from all three; 
 
 ### Roadmap
 
-- Probabilistic profile resolution (fuzzy matching)
+- Additional probabilistic/learned resolution beyond currently implemented typed fuzzy comparisons (intent only; the existing fuzzy engine is already implemented behind a server flag)
 - Synchronous profile resolution
 - Profile unification approval workflow
 - Data import and export
@@ -1605,4 +1668,4 @@ CDS approach: **C1** as central master data authority ingesting from all three; 
 
 ---
 
-*Reconciled against `wso2/identity-customer-data-service` `main` @ `a9fdadd78e5b575865ee9ed0d2ee99af40d6b3ae` (snapshot label `v0.4.1+a9fdadd`, regenerated 2026-10-26; previous baseline `49c5abc`). Sections 1, 2, 19 and the roadmap portion of 20 carry forward internal requirements material; everything else is derived from the source tree unless explicitly labelled otherwise. PR #330's testing claims are distinguished from directly verified code.*
+*Reconciled against `wso2/identity-customer-data-service` `main` @ `cb8c11c37ef0d7a619c43bdc3ea1a74b24ea2c8d` (snapshot label `v0.7.0+cb8c11c`, reviewed 2026-11-06; previous baseline `3178ceb5c389910f47bd051ad799c5d32aebc821`). Sections 1, 2, 19 and the roadmap portion of 20 still carry requirements/intent material; historical passages about v0.3.x/v0.4.x/v0.6.1 are retained as chronology. Latest behavioral changes were reconciled against merged PRs #354/#359/#357 and inspected Go/SQL/config current at the reviewed HEAD. Test success mentioned in PR bodies is an author/CI claim, not independently executed in this review.*
