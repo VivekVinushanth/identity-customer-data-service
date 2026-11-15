@@ -62,9 +62,9 @@ on:
         type: boolean
         default: true
       prerelease:
-        description: 'Mark as pre-release'
+        description: 'Mark as pre-release. Untick for a release.'
         required: false
-        default: false
+        default: true
         type: boolean
 
 permissions:

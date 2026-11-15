@@ -1,0 +1,119 @@
+# -------------------------------------------------------------------------------------
+#
+# Copyright (c) 2026, WSO2 LLC. (https://www.wso2.com).
+#
+# WSO2 LLC. licenses this file to you under the Apache License,
+# Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied. See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+# --------------------------------------------------------------------------------------
+
+# Makes the updatable packs of a published release, for onboarding it to WSO2
+# Updates and for the wso2.com download.
+#
+# The release stays the open-source build: nothing here is uploaded to it. The
+# updatable packs add what the update service needs and this source does not
+# build - the update tool setup scripts and the WSO2 EULA - so they are made
+# on demand from a release, and handed over as this run's artifact.
+
+name: 🔄 Updatable Packs
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to prepare (e.g. v0.4.1); empty for the latest release'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Both are WSO2-hosted and may not be reachable anonymously, so both are
+      # configurable: the setup archive by secret, the EULA by variable.
+      - name: ✅ Check where the update service inputs come from
+        env:
+          SETUP_URL: ${{ secrets.UPDATE_TOOL_SETUP_URL }}
+        run: |
+          if [ -z "$SETUP_URL" ]; then
+            echo "❌ The UPDATE_TOOL_SETUP_URL secret is not set."
+            echo "❌ It must point at the update_tool_setup.zip published by the Updates team."
+            echo "❌ See distribution/update-service/README.md"
+            exit 1
+          fi
+
+      - name: 🏷️ Resolve the release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          if [ -z "$TAG" ]; then
+            TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName >/dev/null \
+            || { echo "❌ no release $TAG"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "✅ $TAG"
+
+      - name: ⬇️ Download the release packs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          mkdir -p release
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir release \
+            --pattern 'cds-*.zip' --pattern 'cds-*.zip.sha256'
+          ls -la release
+
+      - name: ⬇️ Download the update tool setup scripts and the EULA
+        env:
+          SETUP_URL: ${{ secrets.UPDATE_TOOL_SETUP_URL }}
+          EULA_URL: ${{ vars.UPDATE_EULA_URL || 'https://wso2.com/license/wso2-update/LICENSE.txt' }}
+        run: |
+          curl -fsSL -o update_tool_setup.zip "$SETUP_URL"
+          curl -fsSL -o EULA.txt "$EULA_URL" \
+            || { echo "❌ could not download the EULA from $EULA_URL; set the UPDATE_EULA_URL variable to a reachable copy"; exit 1; }
+
+      - name: 🔧 Make the updatable packs
+        run: distribution/update-service/prepare-updatable-packs.sh release update_tool_setup.zip EULA.txt packs
+
+      - name: 🔍 Check the updatable packs
+        run: |
+          distribution/check-pack.sh packs
+          for zip in packs/*.zip; do
+            pack="$(basename "$zip" .zip)"
+            for file in bin/update_tool_setup.sh bin/update_tool_setup.ps1 LICENSE.txt; do
+              unzip -Z1 "$zip" | grep -qx "$pack/$file" || { echo "❌ $pack lacks $file"; exit 1; }
+            done
+            unzip -p "$zip" "$pack/LICENSE.txt" | cmp -s - EULA.txt \
+              || { echo "❌ $pack does not carry the EULA"; exit 1; }
+          done
+          echo "✅ every pack carries the setup scripts and the EULA"
+
+      - name: 📤 Upload the updatable packs
+        uses: actions/upload-artifact@v4
+        with:
+          name: cds-updatable-packs-${{ steps.release.outputs.tag }}
+          path: packs/*
+          if-no-files-found: error
+          retention-days: 7

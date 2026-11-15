@@ -111,7 +111,7 @@ dist: clean-dist
 #
 # bin/ is not created here. It holds only update_tool_setup.sh, which is
 # published by the Updates team rather than built from this source and is
-# attached to the released packs - see $(DISTRIBUTION_SRC)/u2-onboarding/.
+# added to the updatable packs made from a release - see $(DISTRIBUTION_SRC)/update-service/.
 # That script resolves ../updates/product.txt relative to itself, which is why
 # it sits one level below the pack root while the product binary does not.
 _dist_one:
