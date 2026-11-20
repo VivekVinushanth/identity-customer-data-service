@@ -42,8 +42,8 @@ for zip in "$DIST_DIR"/*.zip; do
   listing="$(unzip -Z1 "$zip")"
 
   case "$pack" in
-    *-windows-*) entry="cdd.exe start.bat" ;;
-    *)           entry="cdd start.sh" ;;
+    *-windows-*) entry="bin/cdd.exe bin/start.bat" ;;
+    *)           entry="bin/cdd bin/start.sh" ;;
   esac
 
   for required in $entry $REQUIRED; do

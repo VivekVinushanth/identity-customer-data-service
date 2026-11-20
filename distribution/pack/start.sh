@@ -2,11 +2,11 @@
 #
 # Runs the CDD service in the foreground. Ctrl+C stops it.
 #
-# A thin entry point over `cdd start`, kept at the pack root so that the shape
-# matches the other on-premises products. Options are passed through:
+# A thin entry point over `cdd start`, kept in bin/ beside it. It works from any
+# directory. Options are passed through:
 #
-#   ./start.sh            run CDD
-#   ./start.sh --debug    run CDD, logging at DEBUG level
+#   bin/start.sh            run CDD
+#   bin/start.sh --debug    run CDD, logging at DEBUG level
 #
 # There is no background mode. Running CDD as a service is the job of whatever
 # already runs services — a systemd unit, a container runtime, a process

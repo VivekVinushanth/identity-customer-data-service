@@ -131,8 +131,8 @@ dist: clean-dist
 # Stage and zip one platform pack. Not meant to be called directly.
 #
 # Pack layout:
-#   $(PRODUCT_NAME)                  the runtime ($(PRODUCT_NAME).exe on Windows)
-#   start.sh                         runs it in the foreground (start.bat on Windows)
+#   bin/$(PRODUCT_NAME)              the runtime ($(PRODUCT_NAME).exe on Windows)
+#   bin/start.sh                     runs it in the foreground (start.bat on Windows)
 #   repository/conf/                 deployment.yaml and compatibility.yaml
 #   repository/database/             where the inbuilt database is created
 #   repository/dbscripts/            DDL for operators running an external database
@@ -140,10 +140,10 @@ dist: clean-dist
 #   updates/product.txt              the update-service product identity of this pack
 #   version.txt, LICENSE.txt, README.md
 #
-# bin/ is not created here. The update tool setup scripts are not built from
-# this source: they are added when a release is onboarded to WSO2 Updates,
-# which happens outside this repository. They resolve ../updates/product.txt
-# relative to themselves, which is why updates/ sits at the pack root.
+# The update tool setup scripts are not built from this source: they are added
+# to bin/ when a release is onboarded to WSO2 Updates, which happens outside
+# this repository. They resolve ../updates/product.txt relative to themselves,
+# which is why updates/ sits at the pack root.
 _dist_one:
 	@set -e; \
 	os=$(DIST_OS); arch=$(DIST_ARCH); \
@@ -153,16 +153,16 @@ _dist_one:
 	if [ "$$os" = windows ]; then exe=$(PRODUCT_NAME).exe; launcher=start.bat; fi; \
 	echo "Building $$pack..."; \
 	rm -rf $$stage; \
-	mkdir -p $$stage/updates \
+	mkdir -p $$stage/bin $$stage/updates \
 		$$stage/repository/database $$stage/repository/dbscripts $$stage/repository/resources/security; \
-	CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -o $$stage/$$exe ./cmd/cdd; \
+	CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -o $$stage/bin/$$exe ./cmd/cdd; \
 	cp -r $(REPOSITORY_DIR)/. $$stage/repository/; \
 	$(DISTRIBUTION_SRC)/pack-config.sh $$stage/repository/conf/deployment.yaml; \
 	cp dbscripts/*.sql $$stage/repository/dbscripts/; \
 	cp $(DISTRIBUTION_SRC)/pack/security-README.md $$stage/repository/resources/security/README.md; \
 	$(DISTRIBUTION_SRC)/default-cert.sh $$stage/repository/resources/security; \
 	cp LICENSE.txt README.md $(VERSION_FILE) $$stage/; \
-	install -m 755 $(DISTRIBUTION_SRC)/pack/$$launcher $$stage/; \
+	install -m 755 $(DISTRIBUTION_SRC)/pack/$$launcher $$stage/bin/; \
 	printf '%s\n' "$$pack" > $$stage/updates/product.txt; \
 	find $$stage -name '.DS_Store' -delete; \
 	cd $(DIST_DIR) && COPYFILE_DISABLE=1 zip -rq $$pack.zip $$pack -x '**/.DS_Store' -x '**/__MACOSX/**'; \

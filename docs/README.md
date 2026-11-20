@@ -16,7 +16,7 @@ Identity Server.
    ```bash
    unzip cdd-linux-amd64-<version>.zip
    cd cdd-linux-amd64-<version>
-   ./start.sh          # start.bat on Windows
+   bin/start.sh        # bin\start.bat on Windows
    ```
 
    CDD runs in the foreground on `https://localhost:8900`; Ctrl+C stops it. It

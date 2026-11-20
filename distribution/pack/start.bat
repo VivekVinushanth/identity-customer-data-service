@@ -2,10 +2,11 @@
 rem Runs the CDD service in the foreground. Ctrl+C stops it.
 rem
 rem The Windows counterpart of start.sh: a thin entry point over `cdd start`,
-rem kept at the pack root. Options are passed through:
+rem kept in bin\ beside it. It works from any directory. Options are passed
+rem through:
 rem
-rem   start.bat            run CDD
-rem   start.bat --debug    run CDD, logging at DEBUG level
+rem   bin\start.bat            run CDD
+rem   bin\start.bat --debug    run CDD, logging at DEBUG level
 rem
 rem There is no background mode. Running CDD as a service is the job of a
 rem service wrapper, which runs this in the foreground too.

@@ -25,8 +25,8 @@ import (
 	"strings"
 )
 
-// Paths inside an installed pack. The executable and start.sh sit at CDD_HOME,
-// with repository/ and updates/ beside them.
+// Paths inside an installed pack. The executable and start.sh sit in
+// <CDD_HOME>/bin, with repository/ and updates/ beside bin/.
 const (
 	confDir     = "repository/conf"
 	configFile  = "repository/conf/deployment.yaml"
@@ -58,8 +58,7 @@ func home() (string, error) {
 		exe = resolved
 	}
 
-	// <CDD_HOME>/cdd -> <CDD_HOME>
-	dir := filepath.Dir(exe)
+	dir := packRoot(exe)
 	if _, err := os.Stat(filepath.Join(dir, configFile)); err != nil {
 		cwd, wdErr := os.Getwd()
 		if wdErr == nil {
@@ -68,9 +67,14 @@ func home() (string, error) {
 			}
 		}
 		return "", fmt.Errorf("%s does not look like a CDD installation: %s is missing.\n"+
-			"Run cdd from the root of an extracted pack, or set CDD_HOME", dir, configFile)
+			"Run cdd from the bin directory of an extracted pack, or set CDD_HOME", dir, configFile)
 	}
 	return dir, nil
+}
+
+// packRoot returns the pack an executable belongs to: <CDD_HOME>/bin/cdd -> <CDD_HOME>.
+func packRoot(exe string) string {
+	return filepath.Dir(filepath.Dir(exe))
 }
 
 // path joins one pack-relative path onto CDD_HOME.

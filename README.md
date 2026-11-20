@@ -302,10 +302,10 @@ when all you want is a compile check.
 unzip target/dist/cdd-linux-amd64-<version>.zip -d /opt
 cd /opt/cdd-linux-amd64-<version>
 
-./start.sh       # runs in the foreground; Ctrl+C stops it
+bin/start.sh     # runs in the foreground; Ctrl+C stops it
 ```
 
-On Windows, run `start.bat` from the extracted folder instead.
+On Windows, run `bin\start.bat` instead.
 
 Then switch CDD on in the Identity Server with one `[customer_data_service]`
 block in its `deployment.toml`.

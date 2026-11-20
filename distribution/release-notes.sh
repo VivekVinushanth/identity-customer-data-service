@@ -133,10 +133,10 @@ Extracting the zip is the installation; there is nothing to run first:
 \`\`\`bash
 unzip $PRODUCT-linux-amd64-$PACK_VERSION.zip -d /opt
 cd /opt/$PRODUCT-linux-amd64-$PACK_VERSION
-./start.sh
+bin/start.sh
 \`\`\`
 
-On Windows, extract the zip and run \`start.bat\` from the extracted folder.
+On Windows, extract the zip and run \`bin\\start.bat\`.
 
 The macOS executable is not notarized. If the zip was downloaded with a
 browser and extracted in Finder, macOS blocks it as coming from an unidentified
