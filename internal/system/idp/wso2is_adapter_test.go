@@ -38,7 +38,7 @@ func TestGetPrimaryOrganizationAcceptsAnyParent(t *testing.T) {
 		t.Fatalf("failed to set up the logger: %v", err)
 	}
 	_ = config.InitializeCDSRuntime("", &config.Config{
-		AuthServer: config.AuthServerConfig{TokenEndpoint: "/oauth2/token"},
+		IDP: config.IDPConfig{Endpoints: config.IDPEndpointsConfig{Token: "/oauth2/token"}},
 	})
 
 	cases := map[string]string{
@@ -87,10 +87,10 @@ func TestIntrospectTokenOfASubOrganizationAtThePrimaryOrganization(t *testing.T)
 	}))
 	defer server.Close()
 	host := strings.TrimPrefix(server.URL, "https://")
-	config.OverrideCDSRuntime(config.Config{AuthServer: config.AuthServerConfig{
-		ADUISHostname:           host,
-		IntrospectionEndPoint:   "/oauth2/introspect",
-		IsSystemAppGrantEnabled: true,
+	config.OverrideCDSRuntime(config.Config{IDP: config.IDPConfig{
+		Endpoints:           config.IDPEndpointsConfig{Introspection: "/oauth2/introspect"},
+		IntrospectionClient: config.OAuthClientConfig{ID: "introspect-client", Secret: "introspect-secret"},
+		Asgardeo:            config.AsgardeoConfig{Enabled: true, InternalHostname: host},
 	}})
 	adapter := &WSO2ISAdapter{client: &client.IdentityClient{BaseURL: host, HTTPClient: server.Client()}}
 

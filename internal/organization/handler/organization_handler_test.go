@@ -70,8 +70,8 @@ func newOrgHandlerEnv(t *testing.T) *orgHandlerEnv {
 	})
 	auth := setup.InstallAuthStub(t, "organization:view", "organization:update")
 	conf := config.GetCDSRuntime().Config
-	conf.AuthServer.AdminUsername = orgAdminUser
-	conf.AuthServer.AdminPassword = orgAdminPassword
+	conf.IDP.SyncCredentials.Username = orgAdminUser
+	conf.IDP.SyncCredentials.Password = orgAdminPassword
 	config.OverrideCDSRuntime(conf)
 
 	handle := fmt.Sprintf("acme-%d", orgHandlerCounter.Add(1))

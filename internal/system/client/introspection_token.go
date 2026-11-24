@@ -68,8 +68,7 @@ func (c *IdentityClient) introspectionToken(orgHandle, clientID, clientSecret st
 		return cached.token, nil
 	}
 
-	authConfig := config.GetCDSRuntime().Config.AuthServer
-	endpoint, err := c.buildTokenEndpoint(orgHandle, authConfig.TokenEndpoint)
+	endpoint, err := c.buildTokenEndpoint(orgHandle, config.GetCDSRuntime().Config.IDP.Endpoints.Token)
 	if err != nil {
 		return "", err
 	}

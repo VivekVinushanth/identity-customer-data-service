@@ -42,17 +42,6 @@ log:
       file:
         name: "audit.log"
 
-auth:
-  # The Console is served by the Identity Server and calls CDS cross-origin, so
-  # the IS origin has to be allowed. The rest are the identity-apps dev servers.
-  cors_allowed_origins:
-    - "${IS_BASE}"
-    - "${CDS_BASE}"
-    - "https://localhost:9001"
-    - "https://localhost:9000"
-    - "http://localhost:3000"
-    - "http://localhost:3001"
-
 addr:
   host: "${CDS_LISTEN_HOST}"
   port: ${CDS_PORT}
@@ -94,23 +83,37 @@ identity_resolution:
   allow_evidence_strength_override: false
   fuzzy_matching_enabled: true
 
-# required_scopes comes last so the block appended from the repository's own
-# configuration lands inside auth_server.
-auth_server:
+idp:
+  type: "wso2is"
   host: "${IS_HOST}"
   port: ${IS_PORT}
-  adu_is_hostname: "${IS_HOST}"
-  cookieDomain: "${IS_HOST}"
-  introspectionEndpoint: "/oauth2/introspect"
-  tokenEndpoint: "/oauth2/token"
-  isSystemAppGrantEnabled: false
-  client_id: "${CDS_SYS_CLIENT_ID}"
-  client_secret: "${AUTH_SERVER_CLIENT_SECRET}"
+  endpoints:
+    token: "/oauth2/token"
+    introspection: "/oauth2/introspect"
+  client:
+    id: "${CDS_SYS_CLIENT_ID}"
+    secret: "${AUTH_SERVER_CLIENT_SECRET}"
   # Introspection uses the same client credentials, which IS accepts because of
   # the [[resource.access_control]] override in is-deployment.toml.
-  introspection_client_id: "${CDS_SYS_CLIENT_ID}"
-  introspection_client_secret: "${INTROSPECTION_CLIENT_SECRET}"
+  introspection_client:
+    id: "${CDS_SYS_CLIENT_ID}"
+    secret: "${INTROSPECTION_CLIENT_SECRET}"
   # Must match [customer_data_service] admin_username/admin_password on the IS
   # side.
-  admin_username: "${CDS_SYNC_USER}"
-  admin_password: "${AUTH_SERVER_ADMIN_PASSWORD}"
+  sync_credentials:
+    username: "${CDS_SYNC_USER}"
+    password: "${AUTH_SERVER_ADMIN_PASSWORD}"
+
+# required_scopes comes last so the block appended from the repository's own
+# configuration lands inside auth.
+auth:
+  # The Console is served by the Identity Server and calls CDS cross-origin, so
+  # the IS origin has to be allowed. The rest are the identity-apps dev servers.
+  cors_allowed_origins:
+    - "${IS_BASE}"
+    - "${CDS_BASE}"
+    - "https://localhost:9001"
+    - "https://localhost:9000"
+    - "http://localhost:3000"
+    - "http://localhost:3001"
+  cookie_domain: "${IS_HOST}"

@@ -32,13 +32,6 @@ log:
       file:
         name: "audit.log"
 
-auth:
-  # Browser origins allowed on every request, for the apps every organisation uses, such as
-  # the Console and My Account. An organisation adds the origins of its own apps through
-  # cors_allowed_origins in the admin configuration API, and those apply to its requests only.
-  cors_allowed_origins:
-    - "https://localhost:9443"
-
 addr:
   host: 127.0.0.1
   port: 8900
@@ -51,28 +44,45 @@ server_url: "https://localhost:8900" # Public-facing base URL used for construct
 # in the Identity Server's Console configuration.
 application_identifier_type: "app_id"
 
-# The identity provider of this deployment: wso2is (default). One CDS deployment works with one
-# identity provider.
+# The identity provider of this deployment, and how CDS reaches it. One CDS deployment works with
+# one identity provider. type names its adapter: wso2is (default).
 idp:
   type: "wso2is"
+  host: "localhost"
+  port: 9443
+  endpoints:
+    token: "/oauth2/token"
+    introspection: "/oauth2/introspect"
+  # What the identity provider presents, with HTTP Basic auth, on the synchronization endpoints
+  # of CDS. It must match what the identity provider is configured to send.
+  sync_credentials:
+    username: "admin"
+    password: "${AUTH_SERVER_ADMIN_PASSWORD}"
   # The service-to-service credentials CDS calls the identity provider with, one
   # pair per organization. The Identity Server creates an application for each
   # organization as it enables CDS and sends the credentials to CDS, which keeps
   # them in its database.
   #
   # encryption_key seals those client secrets at rest. Without it CDS refuses
-  # them, and needs a client pair of its own under auth_server (client_id,
-  # client_secret, introspection_client_id, introspection_client_secret), which
-  # this configuration does not set. Generate one with
-  # `openssl rand -base64 32`; a key that is set but not usable stops the server.
-  # Only for an identity provider that sends service credentials (wso2is); a key
-  # for any other stops the server.
+  # them, and needs the client pairs of its own below, which this configuration
+  # does not set. Generate one with `openssl rand -base64 32`; a key that is set
+  # but not usable stops the server. Only for an identity provider that sends
+  # service credentials (wso2is); a key for any other stops the server.
   #
   # introspection_auth: "bearer_token" (default) or "client_secret_basic" (for an
   # Identity Server that accepts client authentication at introspection).
   service_credentials:
     encryption_key: "${SERVICE_CREDENTIALS_ENCRYPTION_KEY}"
     introspection_auth: "bearer_token"
+  # Optional client pairs of the super tenant, for an organization that has sent no service
+  # credentials: client gets the tokens CDS calls the identity provider with, and
+  # introspection_client introspects tokens.
+  # client:
+  #   id: ""
+  #   secret: ""
+  # introspection_client:
+  #   id: ""
+  #   secret: ""
 
 # Organization management: the organization tree, sub organization paths, and sharing with child
 # organizations. On in this shipped configuration: every database script and the inbuilt database
@@ -81,16 +91,15 @@ idp:
 organization_management:
   enabled: true
 
-auth_server:
-  host: "localhost"
-  port : 9443
-  adu_is_hostname : "localhost"
-  cookieDomain: "localhost"
-  introspectionEndpoint: "/oauth2/introspect"
-  tokenEndpoint: "/oauth2/token"
-  admin_username: "admin"
-  admin_password: "${AUTH_SERVER_ADMIN_PASSWORD}"
-  isSystemAppGrantEnabled: false
+auth:
+  # Browser origins allowed on every request, for the apps every organisation uses, such as
+  # the Console and My Account. An organisation adds the origins of its own apps through
+  # cors_allowed_origins in the admin configuration API, and those apply to its requests only.
+  cors_allowed_origins:
+    - "https://localhost:9443"
+  # The domain of the cookies CDS sets.
+  cookie_domain: "localhost"
+  # The scopes a token needs for each operation.
   required_scopes:
     profile:create:
       - "internal_cds_profile_create"

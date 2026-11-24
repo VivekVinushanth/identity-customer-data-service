@@ -282,12 +282,11 @@ func setUpLinkAuth(t *testing.T) func() {
 
 	previous := config.GetCDSRuntime().Config
 	updated := previous
-	updated.AuthServer = config.AuthServerConfig{
-		Host:                  endpoint.Hostname(),
-		Port:                  endpoint.Port(),
-		IntrospectionEndPoint: "/oauth2/introspect",
-		RequiredScopes:        requiredScopesFromDeploymentConfig(t),
-	}
+	updated.IDP.Host = endpoint.Hostname()
+	updated.IDP.Port = endpoint.Port()
+	updated.IDP.Endpoints.Introspection = "/oauth2/introspect"
+	updated.IDP.IntrospectionClient = config.OAuthClientConfig{ID: "stub-client", Secret: "stub-secret"}
+	updated.Auth.RequiredScopes = requiredScopesFromDeploymentConfig(t)
 	updated.TLS = config.TLSConfig{
 		CertDir:    certDir,
 		TrustStore: "trust.pem",
@@ -310,14 +309,14 @@ func requiredScopesFromDeploymentConfig(t *testing.T) map[string][]string {
 	require.NoError(t, err)
 
 	var deployment struct {
-		AuthServer struct {
+		Auth struct {
 			RequiredScopes map[string][]string `yaml:"required_scopes"`
-		} `yaml:"auth_server"`
+		} `yaml:"auth"`
 	}
 	require.NoError(t, yaml.Unmarshal(raw, &deployment))
-	require.Contains(t, deployment.AuthServer.RequiredScopes, "profile:link",
+	require.Contains(t, deployment.Auth.RequiredScopes, "profile:link",
 		"profile:link is missing from config/repository/conf/deployment.yaml")
 
-	require.Equal(t, []string{linkTestScope}, deployment.AuthServer.RequiredScopes["profile:link"])
-	return deployment.AuthServer.RequiredScopes
+	require.Equal(t, []string{linkTestScope}, deployment.Auth.RequiredScopes["profile:link"])
+	return deployment.Auth.RequiredScopes
 }

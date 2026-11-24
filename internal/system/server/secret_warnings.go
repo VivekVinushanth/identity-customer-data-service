@@ -31,17 +31,18 @@ import (
 // credentials.
 func secretWarnings(cfg config.Config, credentialsSupported bool) []string {
 	var warnings []string
-	if strings.TrimSpace(cfg.AuthServer.AdminUsername) == "" || strings.TrimSpace(cfg.AuthServer.AdminPassword) == "" {
-		warnings = append(warnings, "auth_server.admin_username or auth_server.admin_password is empty, so every "+
-			"call to the synchronization endpoints is refused, including the identity provider's. Set "+
+	if strings.TrimSpace(cfg.IDP.SyncCredentials.Username) == "" ||
+		strings.TrimSpace(cfg.IDP.SyncCredentials.Password) == "" {
+		warnings = append(warnings, "idp.sync_credentials.username or idp.sync_credentials.password is empty, "+
+			"so every call to the synchronization endpoints is refused, including the identity provider's. Set "+
 			"AUTH_SERVER_ADMIN_PASSWORD, in repository/conf/secrets.env or the environment, to the password "+
 			"the identity provider presents.")
 	}
 	if credentialsSupported && cfg.IDP.ServiceCredentials.EncryptionKey == "" {
 		warnings = append(warnings, "idp.service_credentials.encryption_key is empty, so CDD refuses the "+
-			"service credentials the identity provider sends, and calls it only with a client pair configured "+
-			"under auth_server. Set SERVICE_CREDENTIALS_ENCRYPTION_KEY, in repository/conf/secrets.env or the "+
-			"environment, to the output of `openssl rand -base64 32`.")
+			"service credentials the identity provider sends, and calls it only with the client pairs of "+
+			"idp.client and idp.introspection_client. Set SERVICE_CREDENTIALS_ENCRYPTION_KEY, in "+
+			"repository/conf/secrets.env or the environment, to the output of `openssl rand -base64 32`.")
 	}
 	return warnings
 }

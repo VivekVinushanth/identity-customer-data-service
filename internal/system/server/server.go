@@ -103,6 +103,10 @@ func Run(cdsHome string) {
 	}
 	defer logStreams.close()
 
+	for _, warning := range cdsConfig.Deprecations() {
+		log.GetLogger().Warn(warning)
+	}
+
 	// Create the adapter of the identity provider.
 	adapter, err := idp.NewAdapter(cdsConfig.IDP.Type)
 	if err != nil {

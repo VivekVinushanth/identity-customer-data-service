@@ -19,6 +19,8 @@
 // Package config defines the CDS configuration and holds the configuration of the running server.
 package config
 
+import "strings"
+
 // AddrConfig is the address the server listens on.
 type AddrConfig struct {
 	Port int    `yaml:"port"`
@@ -103,13 +105,18 @@ type AuditLogConfig struct {
 	Outputs LogOutputsConfig `yaml:"outputs"`
 }
 
-// AuthConfig holds the settings for cross-origin requests.
+// AuthConfig holds the settings for the requests CDS serves: cross-origin requests, the cookie
+// domain, and the scopes each operation requires.
 type AuthConfig struct {
 	CORSAllowedOrigins []string `yaml:"cors_allowed_origins"`
+	// CookieDomain is the domain of the cookies CDS sets.
+	CookieDomain string `yaml:"cookie_domain"`
+	// RequiredScopes maps each operation to the scopes a token needs for it.
+	RequiredScopes map[string][]string `yaml:"required_scopes"`
 }
 
-// AuthServerConfig holds the identity server endpoints and credentials CDS uses, and the scopes each
-// operation requires.
+// AuthServerConfig is the deprecated auth_server section. LoadConfig moves each key it sets to
+// its place under idp or auth, and nothing else reads it.
 type AuthServerConfig struct {
 	Host                      string              `yaml:"host"`
 	Port                      string              `yaml:"port"`
@@ -261,10 +268,11 @@ const (
 
 // Config is the server configuration read from the deployment file.
 type Config struct {
-	Addr         AddrConfig         `yaml:"addr"`
-	ServerURL    string             `yaml:"server_url"`
-	Log          LogConfig          `yaml:"log"`
-	Auth         AuthConfig         `yaml:"auth"`
+	Addr      AddrConfig `yaml:"addr"`
+	ServerURL string     `yaml:"server_url"`
+	Log       LogConfig  `yaml:"log"`
+	Auth      AuthConfig `yaml:"auth"`
+	// AuthServer is deprecated: LoadConfig moves what it sets to IDP and Auth.
 	AuthServer   AuthServerConfig   `yaml:"auth_server"`
 	IDP          IDPConfig          `yaml:"idp"`
 	DataSource   DataSourceConfig   `yaml:"datasource"`
@@ -279,22 +287,80 @@ type Config struct {
 	OrganizationManagement OrganizationManagementConfig `yaml:"organization_management"`
 
 	IdentityResolution IdentityResolutionConfig `yaml:"identity_resolution"`
+
+	// deprecations are the warnings LoadConfig raised for deprecated keys.
+	deprecations []string
 }
 
-// IDPConfig selects the identity provider of the deployment.
+// Deprecations returns a warning for each deprecated key the deployment file sets.
+func (c Config) Deprecations() []string {
+	return c.deprecations
+}
+
+// IDPConfig selects the identity provider of the deployment and holds how CDS reaches it.
 type IDPConfig struct {
 	// Type is "wso2is", the default when it is empty.
 	Type string `yaml:"type"`
+	// Host and Port are where CDS calls the identity provider, over HTTPS. Port may be empty.
+	Host string `yaml:"host"`
+	Port string `yaml:"port"`
+	// Endpoints are the OAuth endpoint paths of an organization.
+	Endpoints IDPEndpointsConfig `yaml:"endpoints"`
+	// Client is the client CDS gets tokens with for an organization whose identity provider has
+	// sent no service credentials. Optional.
+	Client OAuthClientConfig `yaml:"client"`
+	// IntrospectionClient is the client CDS introspects tokens with for an organization whose
+	// identity provider has sent no service credentials. Optional; without it such a token is
+	// refused.
+	IntrospectionClient OAuthClientConfig `yaml:"introspection_client"`
+	// SyncCredentials are what the identity provider presents, with HTTP Basic auth, on the
+	// synchronization endpoints of CDS.
+	SyncCredentials SyncCredentialsConfig `yaml:"sync_credentials"`
 	// ServiceCredentials governs the credentials CDS calls the identity
 	// provider with, which the identity provider sends per organization.
 	ServiceCredentials ServiceCredentialsConfig `yaml:"service_credentials"`
+	// Asgardeo holds the settings that only an Identity Server that Asgardeo runs reads.
+	Asgardeo AsgardeoConfig `yaml:"asgardeo"`
+}
+
+// IDPEndpointsConfig holds the OAuth endpoint paths of an organization, such as "/oauth2/token".
+type IDPEndpointsConfig struct {
+	Token         string `yaml:"token"`
+	Introspection string `yaml:"introspection"`
+}
+
+// OAuthClientConfig is an OAuth client of the identity provider.
+type OAuthClientConfig struct {
+	ID     string `yaml:"id"`
+	Secret string `yaml:"secret"`
+}
+
+// Configured reports whether both the ID and the secret are set.
+func (c OAuthClientConfig) Configured() bool {
+	return strings.TrimSpace(c.ID) != "" && strings.TrimSpace(c.Secret) != ""
+}
+
+// SyncCredentialsConfig is the shared secret the identity provider presents on the
+// synchronization endpoints.
+type SyncCredentialsConfig struct {
+	Username string `yaml:"username"`
+	Password string `yaml:"password"`
+}
+
+// AsgardeoConfig holds the settings of an Identity Server that Asgardeo runs, which CDS
+// authenticates to in its own way. Both go away once Asgardeo sends service credentials.
+type AsgardeoConfig struct {
+	// Enabled turns that way of authenticating on. It is off by default.
+	Enabled bool `yaml:"enabled"`
+	// InternalHostname is the host CDS introspects tokens at, inside the deployment.
+	InternalHostname string `yaml:"internal_hostname"`
 }
 
 // ServiceCredentialsConfig governs the service-to-service credentials CDS calls
 // the identity provider's management APIs with, one pair per organization.
 //
-// auth_server.client_id/client_secret belong to one tenant and can only
-// authenticate at that tenant's token endpoint. Where CDS serves more than one
+// idp.client belongs to one tenant and can only authenticate at that tenant's
+// token endpoint. Where CDS serves more than one
 // organization, the identity provider sends a pair for each organization as it
 // enables CDS, to POST /service-credentials/sync (WSO2 Identity Server creates
 // an application per organization for it). CDS keeps them in its database and

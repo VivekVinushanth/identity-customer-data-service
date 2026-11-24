@@ -488,13 +488,13 @@ func orgScopeRequiredScopes(t *testing.T) map[string][]string {
 	raw, err := os.ReadFile(filepath.Join(utils.GetTestHome(), "config", "repository", "conf", "deployment.yaml"))
 	require.NoError(t, err)
 	var deployment struct {
-		AuthServer struct {
+		Auth struct {
 			RequiredScopes map[string][]string `yaml:"required_scopes"`
-		} `yaml:"auth_server"`
+		} `yaml:"auth"`
 	}
 	require.NoError(t, yaml.Unmarshal(raw, &deployment))
-	require.NotEmpty(t, deployment.AuthServer.RequiredScopes)
-	return deployment.AuthServer.RequiredScopes
+	require.NotEmpty(t, deployment.Auth.RequiredScopes)
+	return deployment.Auth.RequiredScopes
 }
 
 // orgScopeAllScopes returns every scope that the shipped configuration requires.
@@ -554,14 +554,13 @@ func setUpOrgScopeAuth(t *testing.T) func() {
 
 	previous := config.GetCDSRuntime().Config
 	updated := previous
-	updated.AuthServer = config.AuthServerConfig{
-		Host:                  endpoint.Hostname(),
-		Port:                  endpoint.Port(),
-		IntrospectionEndPoint: "/oauth2/introspect",
-		RequiredScopes:        orgScopeRequiredScopes(t),
-		AdminUsername:         orgScopeAdminUser,
-		AdminPassword:         orgScopeAdminPassword,
-	}
+	updated.IDP.Host = endpoint.Hostname()
+	updated.IDP.Port = endpoint.Port()
+	updated.IDP.Endpoints.Introspection = "/oauth2/introspect"
+	updated.IDP.IntrospectionClient = config.OAuthClientConfig{ID: "stub-client", Secret: "stub-secret"}
+	updated.IDP.SyncCredentials = config.SyncCredentialsConfig{Username: orgScopeAdminUser,
+		Password: orgScopeAdminPassword}
+	updated.Auth.RequiredScopes = orgScopeRequiredScopes(t)
 	updated.TLS = config.TLSConfig{CertDir: certDir, TrustStore: "trust.pem"}
 	config.OverrideCDSRuntime(updated)
 

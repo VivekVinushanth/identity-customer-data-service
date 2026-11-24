@@ -33,8 +33,7 @@ import (
 const loopback = "127.0.0.1"
 
 // runtimeConfig is the part of repository/conf/deployment.yaml the CLI needs:
-// where to reach the running server, and which Identity Server the runtime is
-// configured to call. The runtime itself loads the whole file; the CLI reads
+// where to reach the running server, and its certificates. The runtime itself loads the whole file; the CLI reads
 // only these fields so that an unresolved ${PLACEHOLDER} elsewhere in the file
 // — normal before the first start — cannot stop `start` from checking the address.
 type runtimeConfig struct {
@@ -48,10 +47,6 @@ type runtimeConfig struct {
 		ServerCert string `yaml:"server_cert"`
 		TrustStore string `yaml:"trust_store"`
 	} `yaml:"tls"`
-	AuthServer struct {
-		Host string `yaml:"host"`
-		Port int    `yaml:"port"`
-	} `yaml:"auth_server"`
 }
 
 func readRuntimeConfig(cdsHome string) (*runtimeConfig, error) {

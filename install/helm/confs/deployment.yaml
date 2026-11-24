@@ -7,12 +7,6 @@ log:
   app:
     level: {{ .Values.cloud.deployment.cds.config.logLevel }} # "INFO", "WARN", "ERROR", "DEBUG"
 
-auth:
-  cors_allowed_origins:
-  {{- range .Values.cloud.deployment.cds.config.auth.corsAllowedOrigins }}
-  - {{ . | quote }}
-  {{- end }}
-
 addr:
   host: {{ .Values.cloud.deployment.cds.config.addr.host }}
   port: {{ .Values.cloud.deployment.cds.containerPort }}
@@ -26,24 +20,33 @@ organization_management:
 
 idp:
   type: {{ .Values.cloud.deployment.cds.config.idp.type | default "wso2is" | quote }}
+  host: {{ .Values.cloud.deployment.cds.config.identityServer.host }}
+  port: {{ .Values.cloud.deployment.cds.config.identityServer.port }}
+  endpoints:
+    token: {{ .Values.cloud.deployment.cds.config.identityServer.tokenEndpoint }}
+    introspection: {{ .Values.cloud.deployment.cds.config.identityServer.introspectionEndpoint }}
+  client:
+    id: "${AUTH_SERVER_CLIENT_ID}"
+    secret: "${AUTH_SERVER_CLIENT_SECRET}"
+  introspection_client:
+    id: "${INTROSPECTION_CLIENT_ID}"
+    secret: "${INTROSPECTION_CLIENT_SECRET}"
+  sync_credentials:
+    username: "${AUTH_SERVER_ADMIN_USERNAME}"
+    password: "${AUTH_SERVER_ADMIN_PASSWORD}"
   service_credentials:
     encryption_key: "${SERVICE_CREDENTIALS_ENCRYPTION_KEY}"
     introspection_auth: {{ .Values.cloud.deployment.cds.config.idp.serviceCredentials.introspectionAuth | default "bearer_token" | quote }}
+  asgardeo:
+    enabled: {{ .Values.cloud.deployment.cds.config.identityServer.isSystemAppGrantEnabled }}
+    internal_hostname: {{ .Values.cloud.deployment.cds.config.identityServer.ADUISHostname }}
 
-auth_server:
-  host: {{ .Values.cloud.deployment.cds.config.identityServer.host }}
-  port : {{ .Values.cloud.deployment.cds.config.identityServer.port }}
-  adu_is_hostname: {{ .Values.cloud.deployment.cds.config.identityServer.ADUISHostname }}
-  cookieDomain: {{ .Values.cloud.deployment.cds.config.identityServer.cookieDomain }}
-  introspectionEndpoint: {{ .Values.cloud.deployment.cds.config.identityServer.introspectionEndpoint }}
-  tokenEndpoint: {{ .Values.cloud.deployment.cds.config.identityServer.tokenEndpoint }}
-  client_id: "${AUTH_SERVER_CLIENT_ID}"
-  client_secret: "${AUTH_SERVER_CLIENT_SECRET}"
-  admin_username: "${AUTH_SERVER_ADMIN_USERNAME}"
-  admin_password: "${AUTH_SERVER_ADMIN_PASSWORD}"
-  introspection_client_id: "${INTROSPECTION_CLIENT_ID}"
-  introspection_client_secret: "${INTROSPECTION_CLIENT_SECRET}"
-  isSystemAppGrantEnabled: {{ .Values.cloud.deployment.cds.config.identityServer.isSystemAppGrantEnabled }}
+auth:
+  cors_allowed_origins:
+  {{- range .Values.cloud.deployment.cds.config.auth.corsAllowedOrigins }}
+  - {{ . | quote }}
+  {{- end }}
+  cookie_domain: {{ .Values.cloud.deployment.cds.config.identityServer.cookieDomain }}
   required_scopes:
     profile:create:
       - "internal_cds_profile_create"

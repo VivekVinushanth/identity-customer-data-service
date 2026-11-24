@@ -122,12 +122,11 @@ func InstallAuthStub(t testing.TB, operations ...string) AuthStub {
 
 	previous := config.GetCDSRuntime().Config
 	updated := previous
-	updated.AuthServer = config.AuthServerConfig{
-		Host:                  endpoint.Hostname(),
-		Port:                  endpoint.Port(),
-		IntrospectionEndPoint: "/oauth2/introspect",
-		RequiredScopes:        requiredScopes,
-	}
+	updated.IDP.Host = endpoint.Hostname()
+	updated.IDP.Port = endpoint.Port()
+	updated.IDP.Endpoints.Introspection = "/oauth2/introspect"
+	updated.IDP.IntrospectionClient = config.OAuthClientConfig{ID: "stub-client", Secret: "stub-secret"}
+	updated.Auth.RequiredScopes = requiredScopes
 	updated.TLS = config.TLSConfig{CertDir: certDir, TrustStore: "trust.pem"}
 	updated.OrganizationManagement.Enabled = true
 	config.OverrideCDSRuntime(updated)

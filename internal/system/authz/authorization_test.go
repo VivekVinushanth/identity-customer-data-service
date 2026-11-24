@@ -32,7 +32,7 @@ func setScopes(t *testing.T, requiredScopes map[string][]string) {
 	if err := log.Init("ERROR"); err != nil {
 		t.Fatalf("log init: %v", err)
 	}
-	config.OverrideCDSRuntime(config.Config{AuthServer: config.AuthServerConfig{RequiredScopes: requiredScopes}})
+	config.OverrideCDSRuntime(config.Config{Auth: config.AuthConfig{RequiredScopes: requiredScopes}})
 }
 
 func TestOperationFor(t *testing.T) {

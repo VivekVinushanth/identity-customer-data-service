@@ -3,7 +3,7 @@ ${TOML_BEGIN}
 # --- The CDS service IS talks to ------------------------------------------- #
 # Read by the org.wso2.identity.customer.data.service.* bundles in dropins.
 # admin_username/admin_password are the Basic-auth credentials IS presents to
-# the CDS sync endpoints; they must match auth_server.admin_* in the CDS
+# the CDS sync endpoints; they must match idp.sync_credentials in the CDS
 # deployment.yaml.
 [customer_data_service]
 enable = true
@@ -78,7 +78,7 @@ description = "Edit Customer Data Service in the organization from the Console"
 # --- CDS API resources ----------------------------------------------------- #
 # Seeded here rather than over REST: IS reserves the "internal_" scope prefix
 # for system APIs and its REST API rejects it, and these are the scope names
-# CDS expects in auth_server.required_scopes.
+# CDS expects in auth.required_scopes.
 [[api_resources]]
 name = "Customer Data Service profile management API"
 identifier = "/cds/api/v1/profiles"

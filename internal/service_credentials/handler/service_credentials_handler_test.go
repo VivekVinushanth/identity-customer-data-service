@@ -126,21 +126,15 @@ func newFixture(t *testing.T, encryptionKey string) *fixture {
 
 	config.OverrideCDSRuntime(config.Config{
 		TLS: config.TLSConfig{CertDir: certDir, TrustStore: "is.pem"},
-		AuthServer: config.AuthServerConfig{
-			Host:          isURL.Hostname(),
-			Port:          isURL.Port(),
-			TokenEndpoint: "/oauth2/token",
-			// The configured introspection client, which belongs to the super tenant.
-			IntrospectionEndPoint:     "/oauth2/introspect",
-			IntrospectionClientID:     "introspection-client",
-			IntrospectionClientSecret: "introspection-secret",
-			// The configured pair, which the token endpoint does not accept.
-			ClientID:      "configured-client",
-			ClientSecret:  "configured-secret",
-			AdminUsername: syncUser,
-			AdminPassword: syncPass,
-		},
 		IDP: config.IDPConfig{
+			Host:      isURL.Hostname(),
+			Port:      isURL.Port(),
+			Endpoints: config.IDPEndpointsConfig{Token: "/oauth2/token", Introspection: "/oauth2/introspect"},
+			// The configured introspection client, which belongs to the super tenant.
+			IntrospectionClient: config.OAuthClientConfig{ID: "introspection-client", Secret: "introspection-secret"},
+			// The configured pair, which the token endpoint does not accept.
+			Client:             config.OAuthClientConfig{ID: "configured-client", Secret: "configured-secret"},
+			SyncCredentials:    config.SyncCredentialsConfig{Username: syncUser, Password: syncPass},
 			ServiceCredentials: config.ServiceCredentialsConfig{EncryptionKey: encryptionKey},
 		},
 	})

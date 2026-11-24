@@ -642,8 +642,7 @@ func setProfileCookie(w http.ResponseWriter, cookieID string, r *http.Request) {
 }
 
 func resolveDomain() string {
-	authServerConfig := config.GetCDSRuntime().Config.AuthServer
-	return authServerConfig.CookieDomain
+	return config.GetCDSRuntime().Config.Auth.CookieDomain
 }
 
 // UpdateProfile updates a profile from the request body and responds with the updated profile.

@@ -39,6 +39,7 @@ func LoadConfig(cdsHome, filePath string) (*Config, error) {
 	if err := yaml.Unmarshal([]byte(expanded), &cfg); err != nil {
 		return nil, err
 	}
+	cfg.deprecations = cfg.applyDeprecatedKeys()
 	return &cfg, nil
 }
 

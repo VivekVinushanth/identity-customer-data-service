@@ -45,7 +45,7 @@ const subOrgID = "6b1f0d2e-4c1a-4f0e-9a51-2d0c3f7a9b10"
 func setUp(t *testing.T) {
 	t.Helper()
 	require.NoError(t, log.Init("ERROR"))
-	config.OverrideCDSRuntime(config.Config{AuthServer: config.AuthServerConfig{RequiredScopes: map[string][]string{
+	config.OverrideCDSRuntime(config.Config{Auth: config.AuthConfig{RequiredScopes: map[string][]string{
 		"profile:create":      {"internal_cds_profile_create"},
 		"org:profile:create":  {"internal_org_cds_profile_create"},
 		"profile:view":        {"cds_profile_view"},
@@ -159,11 +159,11 @@ func newIntrospectionServer(t *testing.T) *[]string {
 	require.NoError(t, os.WriteFile(filepath.Join(certDir, "is.pem"), certPEM, 0o600))
 	host := strings.TrimPrefix(server.URL, "https://")
 	config.OverrideCDSRuntime(config.Config{
-		AuthServer: config.AuthServerConfig{
-			Host:                    host,
-			ADUISHostname:           host,
-			IntrospectionEndPoint:   "/oauth2/introspect",
-			IsSystemAppGrantEnabled: true,
+		IDP: config.IDPConfig{
+			Host:                host,
+			Endpoints:           config.IDPEndpointsConfig{Introspection: "/oauth2/introspect"},
+			IntrospectionClient: config.OAuthClientConfig{ID: "introspect-client", Secret: "introspect-secret"},
+			Asgardeo:            config.AsgardeoConfig{Enabled: true, InternalHostname: host},
 		},
 		TLS: config.TLSConfig{CertDir: certDir, TrustStore: "is.pem"},
 	})

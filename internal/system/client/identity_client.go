@@ -77,9 +77,9 @@ type IdentityClient struct {
 
 // NewIdentityClient creates an IdentityClient with a TLS/mTLS-ready HTTP client.
 func NewIdentityClient(cfg config.Config) *IdentityClient {
-	baseHostPort := cfg.AuthServer.Host
-	if cfg.AuthServer.Port != "" {
-		baseHostPort = cfg.AuthServer.Host + ":" + cfg.AuthServer.Port
+	baseHostPort := cfg.IDP.Host
+	if cfg.IDP.Port != "" {
+		baseHostPort = cfg.IDP.Host + ":" + cfg.IDP.Port
 	}
 	log.GetLogger().Info("Creating IdentityClient with base URL: " + baseHostPort)
 
@@ -163,16 +163,16 @@ func newOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
 // Otherwise, it falls back to client_credentials per org.
 func (c *IdentityClient) FetchToken(orgHandle string) (string, error) {
 	logger := log.GetLogger()
-	authCfg := config.GetCDSRuntime().Config.AuthServer
+	idpCfg := config.GetCDSRuntime().Config.IDP
 	scope := managementAPIScope
 
-	if authCfg.IsSystemAppGrantEnabled {
+	if idpCfg.Asgardeo.Enabled {
 		logger.Debug(fmt.Sprintf("Fetching token using system_app_grant for org: %s", orgHandle))
-		return c.fetchOrganizationToken(orgHandle, authCfg, scope)
+		return c.fetchOrganizationToken(orgHandle, idpCfg, scope)
 	}
 
 	logger.Debug(fmt.Sprintf("Fetching token using client_credentials for org: %s", orgHandle))
-	return c.fetchClientCredentialsToken(orgHandle, authCfg, scope)
+	return c.fetchClientCredentialsToken(orgHandle, idpCfg, scope)
 }
 
 // orgAPIPathPrefix returns the IS URL segment used for API calls (claims, apps, SCIM).
@@ -218,7 +218,7 @@ func (c *IdentityClient) buildTokenEndpoint(orgID, tokenEndpoint string) (string
 // fetchOrganizationToken obtains an organization-scoped token via system_app_grant.
 func (c *IdentityClient) fetchOrganizationToken(
 	orgHandle string,
-	authCfg config.AuthServerConfig,
+	idpCfg config.IDPConfig,
 	scope string,
 ) (string, error) {
 	logger := log.GetLogger()
@@ -228,13 +228,13 @@ func (c *IdentityClient) fetchOrganizationToken(
 	baseForm.Set("grant_type", "system_app_grant")
 	baseForm.Set("scope", scope)
 	baseForm.Set("organizationHandle", orgHandle)
-	endpoint, err := c.buildTokenEndpoint("carbon.super", authCfg.TokenEndpoint)
+	endpoint, err := c.buildTokenEndpoint("carbon.super", idpCfg.Endpoints.Token)
 	if err != nil {
 		return "", err
 	}
 	logger.Debug(fmt.Sprintf("Fetching super-tenant system_app_grant token for org: %s", orgHandle))
 	// Note: The super-tenant token is not used directly — the grant exchange happens using client credentials.
-	orgToken, err := c.requestToken(endpoint, authCfg.ClientID, authCfg.ClientSecret, baseForm, orgHandle)
+	orgToken, err := c.requestToken(endpoint, idpCfg.Client.ID, idpCfg.Client.Secret, baseForm, orgHandle)
 	if err != nil {
 		errorMsg := fmt.Sprintf("Failed to fetch super-tenant token for the organization:%s", orgHandle)
 		return "", errors2.NewServerError(errors2.ErrorMessage{
@@ -255,10 +255,10 @@ func (c *IdentityClient) fetchOrganizationToken(
 // own tenant. An organization with none uses the configured pair, as before.
 func (c *IdentityClient) fetchClientCredentialsToken(
 	orgID string,
-	authCfg config.AuthServerConfig,
+	idpCfg config.IDPConfig,
 	scope string,
 ) (string, error) {
-	clientID, clientSecret := authCfg.ClientID, authCfg.ClientSecret
+	clientID, clientSecret := idpCfg.Client.ID, idpCfg.Client.Secret
 	if servicecreds.Enabled() {
 		// FetchToken carries no context of its own, and this is a primary-key read that
 		// the token request around it dwarfs.
@@ -271,7 +271,7 @@ func (c *IdentityClient) fetchClientCredentialsToken(
 		}
 	}
 
-	endpoint, err := c.buildTokenEndpoint(orgID, authCfg.TokenEndpoint)
+	endpoint, err := c.buildTokenEndpoint(orgID, idpCfg.Endpoints.Token)
 	if err != nil {
 		return "", err
 	}
@@ -284,8 +284,7 @@ func (c *IdentityClient) fetchClientCredentialsToken(
 // endpoint refuses the client, and a server error when the token endpoint cannot
 // be reached.
 func (c *IdentityClient) VerifyClientCredentials(orgHandle, clientID, clientSecret string) (string, error) {
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	endpoint, err := c.buildTokenEndpoint(orgHandle, authCfg.TokenEndpoint)
+	endpoint, err := c.buildTokenEndpoint(orgHandle, config.GetCDSRuntime().Config.IDP.Endpoints.Token)
 	if err != nil {
 		return "", err
 	}
@@ -428,8 +427,7 @@ func (c *IdentityClient) FetchApplicationIdentifier(
 		return result, err
 	}
 
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	if authCfg.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -499,8 +497,7 @@ func (c *IdentityClient) GetApplication(appID, orgHandle string) (idpModel.Appli
 	if err != nil {
 		return app, false, err
 	}
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	if authCfg.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -538,25 +535,25 @@ func (c *IdentityClient) IntrospectToken(token, orgHandle string) (map[string]in
 	form := url.Values{}
 	form.Set("token", token)
 
-	authConfig := config.GetCDSRuntime().Config.AuthServer
+	idpCfg := config.GetCDSRuntime().Config.IDP
 	var introspectionEndpoint string
 	var err error
-	if authConfig.IsSystemAppGrantEnabled {
-		log.GetLogger().Debug("Token introspection with IS through internal host as system_app_grant is enabled")
-		introspectionEndpoint, err = orgEndpoint(authConfig.ADUISHostname, orgHandle,
-			c.orgAPIPathPrefix(orgHandle)+authConfig.IntrospectionEndPoint)
+	if idpCfg.Asgardeo.Enabled {
+		log.GetLogger().Debug("Token introspection with IS through the internal host")
+		introspectionEndpoint, err = orgEndpoint(idpCfg.Asgardeo.InternalHostname, orgHandle,
+			c.orgAPIPathPrefix(orgHandle)+idpCfg.Endpoints.Introspection)
 		form.Set("appTenant", "carbon.super")
 	} else {
 		// Any token can be introspected at the super tenant's introspection endpoint
 		// with super tenant client credentials.
 		introspectionEndpoint, err = orgEndpoint(c.BaseURL, "carbon.super",
-			"/t/carbon.super"+authConfig.IntrospectionEndPoint)
+			"/t/carbon.super"+idpCfg.Endpoints.Introspection)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	return c.introspect(introspectionEndpoint, authConfig.IntrospectionClientID, authConfig.IntrospectionClientSecret,
+	return c.introspect(introspectionEndpoint, idpCfg.IntrospectionClient.ID, idpCfg.IntrospectionClient.Secret,
 		form)
 }
 
@@ -571,9 +568,8 @@ func (c *IdentityClient) IntrospectToken(token, orgHandle string) (map[string]in
 // with HTTP Basic auth instead.
 func (c *IdentityClient) IntrospectTokenAsOrg(token, orgHandle, clientID, clientSecret string) (map[string]interface{},
 	error) {
-	authConfig := config.GetCDSRuntime().Config.AuthServer
 	introspectionEndpoint, err := orgEndpoint(c.BaseURL, orgHandle,
-		"/t/"+orgHandle+authConfig.IntrospectionEndPoint)
+		"/t/"+orgHandle+config.GetCDSRuntime().Config.IDP.Endpoints.Introspection)
 	if err != nil {
 		return nil, err
 	}
@@ -778,8 +774,7 @@ func (c *IdentityClient) GetAllDialects(orgHandle string) ([]map[string]interfac
 			orgHandle), log.Error(err))
 		return nil, err
 	}
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	if authCfg.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -833,8 +828,7 @@ func (c *IdentityClient) GetClaimsByDialect(dialectID, orgID string) ([]map[stri
 		)
 		return nil, err
 	}
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	if authCfg.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -890,8 +884,7 @@ func (c *IdentityClient) GetLocalClaimsMap(orgID string) (map[string]map[string]
 			orgID), log.Error(err))
 		return nil, err
 	}
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	if authCfg.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -1100,8 +1093,7 @@ func (c *IdentityClient) GetSCIMUser(orgID, userID string) (map[string]interface
 			userID, orgID), log.Error(err))
 		return nil, err
 	}
-	authCfg := config.GetCDSRuntime().Config.AuthServer
-	if authCfg.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)

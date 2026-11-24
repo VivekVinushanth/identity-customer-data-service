@@ -49,7 +49,7 @@ defaults already match a default Identity Server on the same host:
 
 | Setting | Pack default | Change it when |
 |---|---|---|
-| `auth_server.host`, `auth_server.port` | `localhost`, `9443` | the Identity Server is elsewhere |
+| `idp.host`, `idp.port` | `localhost`, `9443` | the Identity Server is elsewhere |
 | `addr.host`, `addr.port` | `127.0.0.1`, `8900` | CDD has to listen on another address |
 | `server_url` | `https://localhost:8900` | the Identity Server reaches CDD by another name |
 | `tls.cert_dir` | `repository/resources/security` | the TLS material is mounted elsewhere |
@@ -64,8 +64,8 @@ in that organization and sends CDD its credentials. CDD calls the Identity
 Server for that organization with them, and introspects its tokens with them,
 and it keeps them only sealed with this key (`idp.service_credentials.encryption_key`).
 Without a key it refuses them and says so at start; it can then call the
-Identity Server only with a client pair of its own configured under
-`auth_server`, which the pack does not set. Generate
+Identity Server only with client pairs of its own, `idp.client` and
+`idp.introspection_client`, which the pack does not set. Generate
 one for this installation, and put it in `repository/conf/secrets.env` (see
 [Secrets](#secrets)):
 
@@ -91,8 +91,12 @@ admin_password = "<AUTH_SERVER_ADMIN_PASSWORD in secrets.env>"
 
 `server_url` is where the Identity Server reaches CDD. `admin_username` and
 `admin_password` are the credentials it presents on the CDD synchronisation
-endpoints, so they have to match `auth_server.admin_username` and
+endpoints, so they have to match `idp.sync_credentials.username` and
 `AUTH_SERVER_ADMIN_PASSWORD` on the CDD side.
+
+A `deployment.yaml` of an earlier release that configures the Identity Server
+under `auth_server` still works: CDD reads those keys in their new places,
+under `idp` and `auth`, and names each one to move in a warning at start.
 
 Everything else the integration needs follows from `enable = true` in an
 Identity Server release that carries the CDD integration: the event handlers,

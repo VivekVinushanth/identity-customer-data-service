@@ -38,7 +38,7 @@ func ValidatePermission(scopeStr string, operation string) bool {
 	}
 
 	logger.Debug(fmt.Sprintf("Validating scopes for operation: %s", operation))
-	requiredScopes := config.GetCDSRuntime().Config.AuthServer.RequiredScopes
+	requiredScopes := config.GetCDSRuntime().Config.Auth.RequiredScopes
 	if requiredScopes == nil {
 		logger.Debug(fmt.Sprintf("No scopes available for operation: %s", operation))
 		return false

@@ -54,8 +54,8 @@ func newSyncEnv(t *testing.T) *profileHandlerEnv {
 	t.Helper()
 	env := newProfileHandlerEnv(t)
 	conf := config.GetCDSRuntime().Config
-	conf.AuthServer.AdminUsername = syncUser
-	conf.AuthServer.AdminPassword = syncPassword
+	conf.IDP.SyncCredentials.Username = syncUser
+	conf.IDP.SyncCredentials.Password = syncPassword
 	config.OverrideCDSRuntime(conf)
 	require.NoError(t, schemaStore.AddProfileSchemaAttributesForScope(context.Background(),
 		[]schemaModel.ProfileSchemaAttribute{{

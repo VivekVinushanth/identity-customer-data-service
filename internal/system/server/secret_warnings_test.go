@@ -27,8 +27,8 @@ import (
 
 func secretsConfig(username, password, key string) config.Config {
 	var cfg config.Config
-	cfg.AuthServer.AdminUsername = username
-	cfg.AuthServer.AdminPassword = password
+	cfg.IDP.SyncCredentials.Username = username
+	cfg.IDP.SyncCredentials.Password = password
 	cfg.IDP.ServiceCredentials.EncryptionKey = key
 	return cfg
 }

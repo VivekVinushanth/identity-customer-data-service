@@ -69,9 +69,9 @@ func AuthnWithAdminCredentials(r *http.Request) error {
 }
 
 func validateAdminCredentials(token string) bool {
-	authServerConfig := config.GetCDSRuntime().Config.AuthServer
-	username := strings.TrimSpace(authServerConfig.AdminUsername)
-	password := strings.TrimSpace(authServerConfig.AdminPassword)
+	syncCredentials := config.GetCDSRuntime().Config.IDP.SyncCredentials
+	username := strings.TrimSpace(syncCredentials.Username)
+	password := strings.TrimSpace(syncCredentials.Password)
 	logger := log.GetLogger()
 	if username == "" || password == "" || token == "" {
 		logger.Debug("Admin credentials are not set properly in the configuration.")

@@ -64,14 +64,11 @@ func writeJSON(w http.ResponseWriter, status int, body interface{}) {
 func newIdentityServer(t *testing.T, systemAppGrant bool) (*identityServer, *IdentityClient) {
 	t.Helper()
 	require.NoError(t, log.Init("ERROR"))
-	config.OverrideCDSRuntime(config.Config{AuthServer: config.AuthServerConfig{
-		TokenEndpoint:             "/oauth2/token",
-		IntrospectionEndPoint:     "/oauth2/introspect",
-		ClientID:                  clientID,
-		ClientSecret:              clientPass,
-		IntrospectionClientID:     "introspect-client",
-		IntrospectionClientSecret: "introspect-secret",
-		IsSystemAppGrantEnabled:   systemAppGrant,
+	config.OverrideCDSRuntime(config.Config{IDP: config.IDPConfig{
+		Endpoints:           config.IDPEndpointsConfig{Token: "/oauth2/token", Introspection: "/oauth2/introspect"},
+		Client:              config.OAuthClientConfig{ID: clientID, Secret: clientPass},
+		IntrospectionClient: config.OAuthClientConfig{ID: "introspect-client", Secret: "introspect-secret"},
+		Asgardeo:            config.AsgardeoConfig{Enabled: systemAppGrant},
 	}})
 
 	is := &identityServer{mux: http.NewServeMux()}

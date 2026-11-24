@@ -143,7 +143,7 @@ func (c *IdentityClient) getJSONWithToken(endpoint, token string, out interface{
 	if err != nil {
 		return 0, failed("Failed to create the request: "+endpoint, err)
 	}
-	if config.GetCDSRuntime().Config.AuthServer.IsSystemAppGrantEnabled {
+	if config.GetCDSRuntime().Config.IDP.Asgardeo.Enabled {
 		req.Header.Set("Authorization", constants.SystemAppHeader+constants.SpaceSeparator+token)
 	} else {
 		req.Header.Set("Authorization", "Bearer "+token)

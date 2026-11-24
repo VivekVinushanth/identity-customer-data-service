@@ -48,7 +48,7 @@ system_portals = ["Console", "My Account", "Customer Data Directory"]
 CDD never creates applications and never holds Identity Server administrator
 credentials. The extension already pushes profiles, claims and organizations to
 CDD over the `/sync` endpoints with the sync admin credentials
-(`auth_server.admin_username` / `admin_password`), and the service credentials
+(`idp.sync_credentials`), and the service credentials
 travel the same way.
 
 ```
@@ -94,9 +94,8 @@ An organization without credentials, such as a sub organization, uses the
 credentials of its primary organization, at the introspection endpoint of the
 primary organization: that endpoint introspects the tokens of all its sub
 organizations. Only where neither has credentials does CDD use the configured
-introspection client (`auth_server.introspection_client_id` /
-`introspection_client_secret`), as before. The shipped configuration does not
-set one; add it under `auth_server` where a fallback is wanted.
+introspection client (`idp.introspection_client.id` / `secret`). The shipped
+configuration does not set one; add it where a fallback is wanted.
 
 Where the introspection endpoint of the Identity Server takes client
 authentication, set `introspection_auth: "client_secret_basic"`. CDD then sends

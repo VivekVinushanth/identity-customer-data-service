@@ -71,8 +71,8 @@ func newAdminHandlerEnv(t *testing.T) *adminHandlerEnv {
 	// The stub restores the previous configuration when the test ends, so adding the admin
 	// credentials to the current one needs no cleanup.
 	conf := config.GetCDSRuntime().Config
-	conf.AuthServer.AdminUsername = adminUser
-	conf.AuthServer.AdminPassword = adminPassword
+	conf.IDP.SyncCredentials.Username = adminUser
+	conf.IDP.SyncCredentials.Password = adminPassword
 	config.OverrideCDSRuntime(conf)
 
 	handle := fmt.Sprintf("acme-%d", adminHandlerOrgCounter.Add(1))
