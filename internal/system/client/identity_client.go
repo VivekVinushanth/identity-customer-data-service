@@ -33,6 +33,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	idpModel "github.com/wso2/identity-customer-data-service/internal/identity_provider/model"
@@ -81,12 +82,13 @@ func NewIdentityClient(cfg config.Config) *IdentityClient {
 	if cfg.AuthServer.Port != "" {
 		baseHostPort = cfg.AuthServer.Host + ":" + cfg.AuthServer.Port
 	}
-	log.GetLogger().Info("Creating IdentityClient with base URL: " + baseHostPort)
 
-	httpClient, err := newOutboundHTTPClient(cfg.TLS)
+	httpClient, err := sharedOutboundHTTPClient(cfg.TLS)
 	if err != nil {
+		// The server checked the TLS configuration at startup, so this is a file that changed since. The
+		// calls fail rather than the process.
 		log.GetLogger().Error("Failed to create outbound HTTPS client for IS", log.Error(err))
-		os.Exit(1)
+		httpClient = &http.Client{Transport: failingTransport{err: err}}
 	}
 
 	return &IdentityClient{
@@ -95,18 +97,54 @@ func NewIdentityClient(cfg config.Config) *IdentityClient {
 	}
 }
 
-// Builds an HTTP client with TLS/mTLS configuration for outbound requests.
-// Validates the server using CA, and optionally presents a client certificate if mTLS is enabled.
-func newOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
-	// Resolve cert dir to absolute to avoid CWD surprises
-	certDir := tlsCfg.CertDir
-	cdsHome := utils.GetCDSHome()
-	if certDir == "" {
-		certDir = filepath.Join(cdsHome, "etc", "certs")
-	} else if !filepath.IsAbs(certDir) {
-		// Relative to the home, as the server resolves it.
-		certDir = filepath.Join(cdsHome, certDir)
+// ValidateTLSConfig reports whether the outbound HTTPS client can be built from the TLS configuration: the
+// trust store and, with mutual TLS on, the client key pair load.
+func ValidateTLSConfig(tlsCfg config.TLSConfig) error {
+	_, err := sharedOutboundHTTPClient(tlsCfg)
+	return err
+}
+
+type outboundClientKey struct {
+	tls     config.TLSConfig
+	cdsHome string
+}
+
+var (
+	outboundClientsMu sync.Mutex
+	outboundClients   = map[outboundClientKey]*http.Client{}
+)
+
+// sharedOutboundHTTPClient is the outbound HTTPS client of a TLS configuration, built once, so that calls reuse
+// its connections rather than reading the certificates and handshaking each time.
+func sharedOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
+	key := outboundClientKey{tls: tlsCfg, cdsHome: utils.GetCDSHome()}
+	outboundClientsMu.Lock()
+	defer outboundClientsMu.Unlock()
+	if httpClient, ok := outboundClients[key]; ok {
+		return httpClient, nil
 	}
+	httpClient, err := newOutboundHTTPClient(tlsCfg)
+	if err != nil {
+		return nil, err
+	}
+	outboundClients[key] = httpClient
+	return httpClient, nil
+}
+
+// failingTransport fails every request with the reason the outbound HTTPS client could not be built.
+type failingTransport struct {
+	err error
+}
+
+func (t failingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, fmt.Errorf("outbound HTTPS client for IS is not available: %w", t.err)
+}
+
+// Builds an HTTP client with TLS/mTLS configuration for outbound requests.
+// Validates the server using CA, and presents a client certificate if mTLS is enabled.
+func newOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
+	// Relative to the home, as the server resolves it.
+	certDir := tlsCfg.ResolveCertDir(utils.GetCDSHome())
 
 	// Root CAs: start with system roots, then append trust store if provided.
 	rootCAs, err := x509.SystemCertPool()
@@ -127,11 +165,18 @@ func newOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
 		}
 	}
 
-	// Client cert/key for mTLS (optional)
+	// The client certificate for mTLS: the outbound key pair when one is set, the server key pair otherwise.
 	var certificates []tls.Certificate
 	if tlsCfg.MTLSEnabled {
-		cdsPublicCrt := filepath.Join(certDir, tlsCfg.CDSPublicCert)
-		cdsPrivatekey := filepath.Join(certDir, tlsCfg.CDSPrivateKey)
+		certFile, keyFile := tlsCfg.CDSPublicCert, tlsCfg.CDSPrivateKey
+		if tlsCfg.OutboundCert != "" || tlsCfg.OutboundKey != "" {
+			if tlsCfg.OutboundCert == "" || tlsCfg.OutboundKey == "" {
+				return nil, errors.New("tls.outbound_cert and tls.outbound_key must be set together")
+			}
+			certFile, keyFile = tlsCfg.OutboundCert, tlsCfg.OutboundKey
+		}
+		cdsPublicCrt := filepath.Join(certDir, certFile)
+		cdsPrivatekey := filepath.Join(certDir, keyFile)
 		pair, err := tls.LoadX509KeyPair(cdsPublicCrt, cdsPrivatekey)
 		if err != nil {
 			return nil, fmt.Errorf("failed to load cert/key (%s, %s): %w", cdsPublicCrt, cdsPrivatekey, err)

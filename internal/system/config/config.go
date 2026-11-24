@@ -19,6 +19,8 @@
 // Package config defines the CDS configuration and holds the configuration of the running server.
 package config
 
+import "path/filepath"
+
 // AddrConfig is the address the server listens on.
 type AddrConfig struct {
 	Port int    `yaml:"port"`
@@ -375,14 +377,47 @@ func (c Config) UsesAppIDIdentifier() bool {
 	return c.ApplicationIdentifierType == ApplicationIdentifierTypeAppID
 }
 
-// TLSConfig holds the certificates of the server and whether mutual TLS is on.
+// TLSConfig holds the certificates of the server and the two halves of mutual TLS.
+//
+// MTLSEnabled is the outbound half: CDD presents a client certificate when it
+// calls the identity server. RequireClientCert is the inbound half: the sync
+// endpoints the identity server calls refuse a request that does not come with
+// a client certificate the client trust store verifies. The other endpoints,
+// which browsers and SDKs call, ask for no client certificate.
 type TLSConfig struct {
-	MTLSEnabled             bool   `yaml:"mtls_enabled"`
-	CertDir                 string `yaml:"cert_dir"`
-	CDSPublicCert           string `yaml:"server_cert"`
-	CDSPrivateKey           string `yaml:"server_key"`
-	IdentityServerPublicKey string `yaml:"client_cert"`
-	TrustStore              string `yaml:"trust_store"`
+	MTLSEnabled   bool   `yaml:"mtls_enabled"`
+	CertDir       string `yaml:"cert_dir"`
+	CDSPublicCert string `yaml:"server_cert"`
+	CDSPrivateKey string `yaml:"server_key"`
+	// TrustStore holds the certificates CDD trusts when it calls the identity
+	// server and the broker, added to the system CAs.
+	TrustStore string `yaml:"trust_store"`
+	// RequireClientCert makes the sync endpoints require a client certificate
+	// that ClientTrustStore verifies. A key of its own, not mtls_enabled, so a
+	// configuration that turned on the outbound half keeps working against an
+	// identity server that presents no client certificate.
+	RequireClientCert bool `yaml:"require_client_cert"`
+	// ClientTrustStore holds the client certificates the sync endpoints accept:
+	// the identity server's own certificate, or a CA that issues only to it.
+	// Required with RequireClientCert, and never the system CAs.
+	ClientTrustStore string `yaml:"client_trust_store"`
+	// OutboundCert and OutboundKey are the key pair CDD presents to the identity
+	// server. Empty means the server key pair, which then needs the TLS client
+	// authentication usage.
+	OutboundCert string `yaml:"outbound_cert"`
+	OutboundKey  string `yaml:"outbound_key"`
+}
+
+// ResolveCertDir is where the TLS files are: cert_dir relative to the CDD home,
+// and etc/certs under the home when it is unset.
+func (c TLSConfig) ResolveCertDir(cdsHome string) string {
+	if c.CertDir == "" {
+		return filepath.Join(cdsHome, "etc", "certs")
+	}
+	if filepath.IsAbs(c.CertDir) {
+		return c.CertDir
+	}
+	return filepath.Join(cdsHome, c.CertDir)
 }
 
 // CleanupConfig holds the settings of the background cleanup jobs.

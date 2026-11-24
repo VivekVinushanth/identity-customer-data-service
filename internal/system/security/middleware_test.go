@@ -20,6 +20,8 @@ package security
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
 	stderrors "errors"
@@ -224,4 +226,60 @@ func TestAuthenticate_primaryOrgPathIntrospectsAtThePrimaryOrg(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{"/t/acme/oauth2/introspect"}, *paths)
+}
+
+// adminRequest is a sync request with the admin credentials, over a TLS connection that verified the given
+// client certificate chains.
+func adminRequest(username, password string, verifiedChains [][]*x509.Certificate) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/t/acme/cds/api/v1/service-credentials/sync", nil)
+	r.SetBasicAuth(username, password)
+	r.TLS = &tls.ConnectionState{VerifiedChains: verifiedChains}
+	return r
+}
+
+func TestAuthnWithAdminCredentialsUnderRequireClientCert(t *testing.T) {
+	require.NoError(t, log.Init("ERROR"))
+	verified := [][]*x509.Certificate{{{}}}
+	for name, tc := range map[string]struct {
+		require bool
+		request *http.Request
+		allowed bool
+	}{
+		"off: the credentials alone": {
+			request: adminRequest("sync", "secret", nil), allowed: true,
+		},
+		"on: a verified certificate and the credentials": {
+			require: true, request: adminRequest("sync", "secret", verified), allowed: true,
+		},
+		"on: the credentials without a certificate": {
+			require: true, request: adminRequest("sync", "secret", nil),
+		},
+		"on: the credentials over plain HTTP": {
+			require: true, request: func() *http.Request {
+				r := adminRequest("sync", "secret", nil)
+				r.TLS = nil
+				return r
+			}(),
+		},
+		"on: a verified certificate with wrong credentials": {
+			require: true, request: adminRequest("sync", "wrong", verified),
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			config.OverrideCDSRuntime(config.Config{
+				AuthServer: config.AuthServerConfig{AdminUsername: "sync", AdminPassword: "secret"},
+				TLS:        config.TLSConfig{RequireClientCert: tc.require},
+			})
+
+			err := AuthnWithAdminCredentials(tc.request)
+
+			if tc.allowed {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			status, _ := statusOf(t, err)
+			assert.Equal(t, http.StatusUnauthorized, status)
+		})
+	}
 }

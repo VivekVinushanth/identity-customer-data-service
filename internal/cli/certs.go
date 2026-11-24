@@ -60,6 +60,29 @@ func usingDefaultCertificate(path string) bool {
 	if block == nil {
 		return false
 	}
+	return isDefaultCertificate(block)
+}
+
+// trustsDefaultCertificate reports whether the PEM bundle at path holds the
+// certificate the pack shipped with. In the client trust store it means that
+// anyone holding the public default key can call the sync endpoints.
+func trustsDefaultCertificate(path string) bool {
+	raw, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		return false
+	}
+	for block, rest := pem.Decode(raw); block != nil; block, rest = pem.Decode(rest) {
+		if isDefaultCertificate(block) {
+			return true
+		}
+	}
+	return false
+}
+
+func isDefaultCertificate(block *pem.Block) bool {
+	if block.Type != "CERTIFICATE" {
+		return false
+	}
 	if _, err := x509.ParseCertificate(block.Bytes); err != nil {
 		return false
 	}

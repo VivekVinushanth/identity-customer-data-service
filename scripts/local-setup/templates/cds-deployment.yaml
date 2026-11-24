@@ -75,7 +75,8 @@ message_queue:
     schema_sync_queue_name: "/queue/cds-schema-sync"
 
 tls:
-  mtls_enabled: false          # IS does not present a client certificate
+  mtls_enabled: false          # CDS presents no client certificate to IS
+  require_client_cert: false   # the sync endpoints take IS calls without a client certificate
   cert_dir: "${CDS_CERT_DIR}"
   server_cert: "server.crt"
   server_key: "server.key"

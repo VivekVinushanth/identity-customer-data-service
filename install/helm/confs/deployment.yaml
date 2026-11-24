@@ -144,11 +144,12 @@ datasource:
 
 tls:
   mtls_enabled: {{ .Values.cloud.deployment.cds.tls.mtls_enabled }}
+  require_client_cert: {{ .Values.cloud.deployment.cds.tls.require_client_cert }}
   cert_dir: "{{ .Values.cloud.deployment.cds.tls.cert_dir }}"
   server_cert: "{{ .Values.cloud.deployment.cds.tls.server_cert }}"
   server_key: "{{ .Values.cloud.deployment.cds.tls.server_key }}"
-  client_cert: "{{ .Values.cloud.deployment.cds.tls.client_cert }}"
   trust_store: "{{ .Values.cloud.deployment.cds.tls.trust_store }}"
+  client_trust_store: "{{ .Values.cloud.deployment.cds.tls.client_trust_store }}"
 
 message_queue:
   type: {{ .Values.cloud.deployment.cds.config.message_queue.type }}

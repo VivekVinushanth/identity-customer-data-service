@@ -44,9 +44,11 @@ type runtimeConfig struct {
 	} `yaml:"addr"`
 	ServerURL string `yaml:"server_url"`
 	TLS       struct {
-		CertDir    string `yaml:"cert_dir"`
-		ServerCert string `yaml:"server_cert"`
-		TrustStore string `yaml:"trust_store"`
+		RequireClientCert bool   `yaml:"require_client_cert"`
+		CertDir           string `yaml:"cert_dir"`
+		ServerCert        string `yaml:"server_cert"`
+		TrustStore        string `yaml:"trust_store"`
+		ClientTrustStore  string `yaml:"client_trust_store"`
 	} `yaml:"tls"`
 	AuthServer struct {
 		Host string `yaml:"host"`
@@ -81,6 +83,15 @@ func (c *runtimeConfig) serverCertificate(cdsHome string) string {
 		name = "server.crt"
 	}
 	return filepath.Join(c.certDir(cdsHome), name)
+}
+
+// clientTrustStore is the path of the client certificates the sync endpoints
+// accept, or "" when require_client_cert is off or it names none.
+func (c *runtimeConfig) clientTrustStore(cdsHome string) string {
+	if !c.TLS.RequireClientCert || c.TLS.ClientTrustStore == "" {
+		return ""
+	}
+	return filepath.Join(c.certDir(cdsHome), c.TLS.ClientTrustStore)
 }
 
 // certDir resolves tls.cert_dir as the runtime does: relative to the CDD home,

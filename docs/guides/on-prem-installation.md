@@ -142,14 +142,21 @@ same way. On Windows, CDD does not register as a Windows service itself, so run
 
 ## Certificates
 
-CDD and the Identity Server call each other over HTTPS, so each has to trust
-the other's certificate.
+CDD and the Identity Server call each other over mutual TLS, so each has to
+trust the other's certificate, as a server and as a client:
+
+- `tls.mtls_enabled`: CDD presents its certificate when it calls the Identity
+  Server.
+- `tls.require_client_cert`: the sync endpoints the Identity Server calls
+  refuse a request without a client certificate that `client_trust_store.pem`
+  verifies. The Identity Server's CDD connector presents the key pair of its
+  primary keystore.
 
 A pack carries Identity Server 7.3.0's default key pair as its
 `server.crt` and `server.key`, and trusts that certificate in
-`trust_store.pem`. A default Identity Server 7.3.0 already trusts the same
-certificate, so on one host the two talk to each other with no certificate set
-up on either side.
+`trust_store.pem` and `client_trust_store.pem`. A default Identity Server 7.3.0
+presents the same key pair and already trusts its certificate, so on one host
+the two talk to each other with no certificate set up on either side.
 
 The certificate is issued for `localhost` only. Containers, separate hosts, or
 any other name need certificates issued for the names in use, on both sides —

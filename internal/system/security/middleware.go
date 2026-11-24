@@ -35,10 +35,19 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/system/utils"
 )
 
-// AuthnWithAdminCredentials performs authentication using admin credentials from the request.
+// AuthnWithAdminCredentials performs authentication using admin credentials from the request. With
+// tls.require_client_cert on, the request must also come with a client certificate the client trust store verified.
 func AuthnWithAdminCredentials(r *http.Request) error {
 	authHeader := r.Header.Get("Authorization")
 	logger := log.GetLogger()
+	if config.GetCDSRuntime().Config.TLS.RequireClientCert && !hasVerifiedClientCertificate(r) {
+		logger.Debug("No verified client certificate on a request that requires one")
+		return errors.NewClientError(errors.ErrorMessage{
+			Code:        errors.Unauthorized.Code,
+			Message:     errors.Unauthorized.Message,
+			Description: "A verified client certificate is required",
+		}, http.StatusUnauthorized)
+	}
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
 		logger.Debug("Missing or invalid Authorization header")
 		return errors.NewClientError(errors.ErrorMessage{
@@ -66,6 +75,13 @@ func AuthnWithAdminCredentials(r *http.Request) error {
 		ID:   reqctx.ServiceAdminActorID,
 	})
 	return nil
+}
+
+// hasVerifiedClientCertificate reports whether the TLS handshake verified a client certificate. The listener
+// verifies one only against the client trust store, so a verified chain means the caller holds a key the
+// trust store names.
+func hasVerifiedClientCertificate(r *http.Request) bool {
+	return r.TLS != nil && len(r.TLS.VerifiedChains) > 0
 }
 
 func validateAdminCredentials(token string) bool {

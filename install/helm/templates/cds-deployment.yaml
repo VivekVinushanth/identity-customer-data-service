@@ -125,6 +125,12 @@ spec:
               mountPath: {{ .Values.cloud.deployment.cds.tls.cert_dir }}/{{ .Values.cloud.deployment.cds.tls.trust_store}}
               subPath: {{ .Values.cloud.deployment.cds.tls.trust_store}}
               readOnly: true
+            {{- if .Values.cloud.deployment.cds.tls.require_client_cert }}
+            - name: cds-mtls-volume
+              mountPath: {{ .Values.cloud.deployment.cds.tls.cert_dir }}/{{ .Values.cloud.deployment.cds.tls.client_trust_store }}
+              subPath: {{ .Values.cloud.deployment.cds.tls.client_trust_store }}
+              readOnly: true
+            {{- end }}
           envFrom:
             - secretRef:
                 name: cds-env-secret

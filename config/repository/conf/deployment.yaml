@@ -257,12 +257,28 @@ datasource:
   #   max_open_conns: 4
 
 tls:
+  # CDD serves HTTPS with server_cert and server_key, and verifies the Identity Server's
+  # certificate against trust_store, added to the system CAs.
+  # mtls_enabled: CDD presents a client certificate when it calls the Identity Server:
+  # server_cert and server_key, or outbound_cert and outbound_key when set.
   mtls_enabled: true
+  # require_client_cert: the sync endpoints the Identity Server calls refuse a request
+  # without a client certificate that client_trust_store verifies. The endpoints browsers
+  # and SDKs call ask for none. The Identity Server's CDD connector must present a client
+  # certificate. Turn it off only where something in front of CDD ends the TLS, since the
+  # client certificate does not reach CDD there.
+  require_client_cert: true
   cert_dir: "/etc/certs"
   server_cert: "server.crt" #filename
   server_key: "server.key" #filename
-  client_cert: "client.crt"   #filename
-  trust_store: "trust_store.pem"      #filename
+  trust_store: "trust_store.pem"      # certificates CDD trusts when it calls the Identity Server
+  # The client certificates the sync endpoints accept: the Identity Server's own certificate,
+  # or a CA that issues only to it. Never a public CA.
+  client_trust_store: "client_trust_store.pem"
+  # The key pair CDD presents to the Identity Server. Unset means server_cert and server_key,
+  # which then need the TLS client authentication usage.
+  # outbound_cert: "client.crt"
+  # outbound_key: "client.key"
 
 identity_resolution:
   # Allow a unification rule to carry its own match_strength and mismatch_strength rather

@@ -18,7 +18,9 @@
 package client
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -480,6 +482,30 @@ func TestNewOutboundHTTPClient(t *testing.T) {
 	_, err = newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true, CDSPublicCert: "a.crt",
 		CDSPrivateKey: "a.key"})
 	assert.Error(t, err, "a client certificate that cannot be loaded")
+
+	_, err = newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true, OutboundCert: "client.crt"})
+	assert.Error(t, err, "an outbound certificate without its key")
+}
+
+func TestNewOutboundHTTPClientPresentsTheOutboundKeyPairOverTheServerOne(t *testing.T) {
+	dir := t.TempDir()
+	server := httptest.NewTLSServer(http.NotFoundHandler())
+	t.Cleanup(server.Close)
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	key, err := x509.MarshalPKCS8PrivateKey(server.TLS.Certificates[0].PrivateKey)
+	require.NoError(t, err)
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key})
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "client.crt"), certPEM, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "client.key"), keyPEM, 0o600))
+
+	// The server pair names files that are not there, so only the outbound pair can load.
+	client, err := newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true,
+		CDSPublicCert: "missing.crt", CDSPrivateKey: "missing.key", OutboundCert: "client.crt", OutboundKey: "client.key"})
+	require.NoError(t, err)
+
+	certificates := client.Transport.(*http.Transport).TLSClientConfig.Certificates
+	require.Len(t, certificates, 1)
+	assert.Equal(t, server.Certificate().Raw, certificates[0].Certificate[0])
 }
 
 func TestConvertSCIMClaimWithLocal(t *testing.T) {
@@ -567,4 +593,37 @@ func TestSmallHelpers(t *testing.T) {
 	assert.Equal(t, "b", ifThenElse(false, "a", "b"))
 	assert.Equal(t, map[string]interface{}{"a.b": 1, "c": 2, "d": []int{1}},
 		flattenSCIMClaims(map[string]interface{}{"a": map[string]interface{}{"b": 1}, "c": 2, "d": []int{1}}))
+}
+
+func TestNewIdentityClientSharesTheOutboundHTTPClient(t *testing.T) {
+	cfg := config.Config{TLS: config.TLSConfig{CertDir: t.TempDir()}}
+
+	first := NewIdentityClient(cfg)
+	second := NewIdentityClient(cfg)
+	assert.Same(t, first.HTTPClient, second.HTTPClient, "the same TLS configuration builds one client")
+
+	cfg.TLS.CertDir = t.TempDir()
+	assert.NotSame(t, first.HTTPClient, NewIdentityClient(cfg).HTTPClient,
+		"another TLS configuration builds its own client")
+}
+
+func TestNewIdentityClientWithoutUsableTLSMaterialFailsItsCalls(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	cfg := config.Config{TLS: config.TLSConfig{CertDir: t.TempDir(), TrustStore: "trust_store.pem"}}
+
+	require.Error(t, ValidateTLSConfig(cfg.TLS), "a trust store that is not there")
+	_, err := NewIdentityClient(cfg).HTTPClient.Get(server.URL)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "trust_store", "the call fails with the reason, and the process lives on")
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
+	require.NoError(t, os.WriteFile(filepath.Join(cfg.TLS.CertDir, "trust_store.pem"), certPEM, 0o600))
+	require.NoError(t, ValidateTLSConfig(cfg.TLS))
+	resp, err := NewIdentityClient(cfg).HTTPClient.Get(server.URL)
+	require.NoError(t, err, "the failure is not cached once the trust store is in place")
+	_ = resp.Body.Close()
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 }

@@ -22,7 +22,6 @@ package server
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"os"
@@ -35,6 +34,7 @@ import (
 	_ "github.com/lib/pq"
 
 	adminConfigProvider "github.com/wso2/identity-customer-data-service/internal/admin_config/provider"
+	"github.com/wso2/identity-customer-data-service/internal/system/client"
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 	"github.com/wso2/identity-customer-data-service/internal/system/cors"
 	"github.com/wso2/identity-customer-data-service/internal/system/database"
@@ -102,6 +102,13 @@ func Run(cdsHome string) {
 		os.Exit(1)
 	}
 	defer logStreams.close()
+
+	// A trust store or client key pair that does not load stops the server here rather than at its first call
+	// to the identity server.
+	if err := client.ValidateTLSConfig(cdsConfig.TLS); err != nil {
+		log.GetLogger().Error("Invalid TLS configuration.", log.Error(err))
+		os.Exit(1)
+	}
 
 	// Create the adapter of the identity provider.
 	adapter, err := idp.NewAdapter(cdsConfig.IDP.Type)
@@ -175,13 +182,8 @@ func Run(cdsHome string) {
 	logger := log.GetLogger()
 	logger.Info(fmt.Sprintf("CDD starting securely on: https://%s", serverAddr))
 
-	certDir := cdsConfig.TLS.CertDir
-	if certDir == "" {
-		certDir = filepath.Join(cdsHome, "etc", "certs")
-	} else if !filepath.IsAbs(certDir) {
-		// Relative to the home, as a pack configures it, so the runtime finds the same files from any directory.
-		certDir = filepath.Join(cdsHome, certDir)
-	}
+	// Relative to the home, as a pack configures it, so the runtime finds the same files from any directory.
+	certDir := cdsConfig.TLS.ResolveCertDir(cdsHome)
 
 	if cdsConfig.TLS.CDSPublicCert == "" || cdsConfig.TLS.CDSPrivateKey == "" {
 		logger.Error("TLS configuration is missing server certificate or key.")
@@ -209,6 +211,15 @@ func Run(cdsHome string) {
 		os.Exit(1)
 	}
 
+	tlsConfig, err := serverTLSConfig(cdsConfig.TLS, certDir)
+	if err != nil {
+		logger.Error("Invalid TLS configuration.", log.Error(err))
+		os.Exit(1)
+	}
+	if cdsConfig.TLS.RequireClientCert {
+		logger.Info("The sync endpoints require a client certificate from the client trust store.")
+	}
+
 	server := &http.Server{
 		Addr:    serverAddr,
 		Handler: mux,
@@ -218,9 +229,7 @@ func Run(cdsHome string) {
 		ReadHeaderTimeout: 5 * time.Second,
 		IdleTimeout:       60 * time.Second,
 		ErrorLog:          newServerErrorLog(),
-		TLSConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
+		TLSConfig:         tlsConfig,
 	}
 
 	// Listen for OS shutdown signals

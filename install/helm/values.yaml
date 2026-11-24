@@ -99,12 +99,20 @@ cloud:
           fuzzyMatchingEnabled: true
 
       tls:
+        # mtls_enabled: CDD presents server_cert and server_key as a client certificate when
+        # it calls the Identity Server.
         mtls_enabled: false
+        # require_client_cert: the sync endpoints refuse a request without a client
+        # certificate that client_trust_store verifies. Off when an ingress in front of CDD
+        # ends the TLS, since the client certificate does not reach CDD there. On, the
+        # customer-data-service-keys secret also holds client_trust_store: the Identity
+        # Server's own certificate, or a CA that issues only to it.
+        require_client_cert: false
         cert_dir : "/app/repository/certs"
         server_cert: "client.cer"
         server_key: "client-key.pem"
-        client_cert: "wso2carbontls.cer"
         trust_store: "truststore.pem"
+        client_trust_store: "client_trust_store.pem"
 
       secrets:
         authServerClientId: "" # Add the auth server client ID

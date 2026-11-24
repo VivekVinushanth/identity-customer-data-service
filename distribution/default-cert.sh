@@ -96,7 +96,13 @@ fingerprint=$(openssl x509 -in "$DIR/server.crt" -noout -fingerprint -sha256 | c
 # CDD calls the Identity Server too, so it trusts the same certificate.
 cp "$DIR/server.crt" "$DIR/trust_store.pem"
 
+# The Identity Server presents the same key pair as its client certificate on
+# the sync endpoints, so CDD accepts it there. A file of its own, not the
+# trust store: it names who may call the sync endpoints, not which servers
+# CDD calls.
+cp "$DIR/server.crt" "$DIR/client_trust_store.pem"
+
 # The key is readable by its owner alone, even inside the zip, so an extracted
 # pack does not start out world-readable.
 chmod 600 "$DIR/server.key"
-chmod 644 "$DIR/server.crt" "$DIR/trust_store.pem"
+chmod 644 "$DIR/server.crt" "$DIR/trust_store.pem" "$DIR/client_trust_store.pem"

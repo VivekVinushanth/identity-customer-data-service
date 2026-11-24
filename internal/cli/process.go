@@ -73,6 +73,12 @@ func runStart(args []string) error {
 			"Identity Server 7.3.0 download: replace it before this deployment carries real traffic. " +
 			"See repository/resources/security/README.md.")
 	}
+	if trustsDefaultCertificate(cfg.clientTrustStore(cdsHome)) {
+		warnf("CDD accepts the default certificate the pack ships with as a client certificate on its sync " +
+			"endpoints. Its private key is in every Identity Server 7.3.0 download: replace " +
+			"tls.client_trust_store with the Identity Server's own certificate. " +
+			"See repository/resources/security/README.md.")
+	}
 
 	stepf("Starting CDD at %s", cfg.localBase())
 	infof("Press Ctrl+C to stop.")
