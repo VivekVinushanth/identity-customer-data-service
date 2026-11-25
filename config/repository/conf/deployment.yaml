@@ -265,9 +265,6 @@ tls:
   server_key: "server.key"
   trust_store: "trust_store.pem"                # Identity Server certificates CDD trusts as a client
   client_trust_store: "client_trust_store.pem"  # client certificates the sync endpoints accept
-  # client_cert_names: ["is.example.com"]       # names the client certificate must carry
-  # outbound_cert: "client.crt"                 # the key pair CDD presents; default server_cert
-  # outbound_key: "client.key"
 
 identity_resolution:
   # Allow a unification rule to carry its own match_strength and mismatch_strength rather
