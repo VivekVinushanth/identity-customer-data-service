@@ -142,15 +142,21 @@ same way. On Windows, CDD does not register as a Windows service itself, so run
 
 ## Certificates
 
-CDD and the Identity Server call each other over mutual TLS, so each has to
-trust the other's certificate, as a server and as a client:
+CDD and the Identity Server call each other over TLS, so each has to trust the
+other's certificate:
 
-- `tls.mtls_enabled`: CDD presents its certificate when it calls the Identity
-  Server.
-- `tls.require_client_cert`: the sync endpoints the Identity Server calls
-  refuse a request without a client certificate that `client_trust_store.pem`
-  verifies. The Identity Server's CDD connector presents the key pair of its
-  primary keystore.
+- `tls.require_client_cert`: the sync endpoints, which only the Identity Server
+  calls, refuse a request without a client certificate that
+  `client_trust_store.pem` verifies, on top of the sync credentials. The
+  Identity Server's CDD connector presents the key pair of
+  `[customer_data_service.client_certificate]`, or of its primary keystore when
+  that is not set.
+- `tls.mtls_enabled`: CDD presents a client certificate when it calls the
+  Identity Server's APIs, where it authenticates with OAuth client credentials.
+
+A client certificate needs the extended key usage `clientAuth`. Public CAs no
+longer issue it, so in production the Identity Server presents a key pair of
+its own for CDD, from a CA that issues only to it or self-signed.
 
 A pack carries Identity Server 7.3.0's default key pair as its
 `server.crt` and `server.key`, and trusts that certificate in
