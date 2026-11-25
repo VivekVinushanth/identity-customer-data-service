@@ -259,7 +259,7 @@ datasource:
 tls:
   # What each file holds, and the certificates to use in production: the security README.
   mtls_enabled: true          # present a client certificate when calling the Identity Server
-  require_client_cert: true   # the sync endpoints require a client certificate from client_trust_store
+  require_client_cert: false  # require a client certificate from client_trust_store on the sync endpoints
   cert_dir: "/etc/certs"
   server_cert: "server.crt"
   server_key: "server.key"

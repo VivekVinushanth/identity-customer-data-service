@@ -143,20 +143,22 @@ same way. On Windows, CDD does not register as a Windows service itself, so run
 ## Certificates
 
 CDD and the Identity Server call each other over TLS, so each has to trust the
-other's certificate:
+other's certificate.
 
-- `tls.require_client_cert`: the sync endpoints, which only the Identity Server
-  calls, refuse a request without a client certificate that
-  `client_trust_store.pem` verifies, on top of the sync credentials. The
-  Identity Server's CDD connector presents the key pair of
-  `[customer_data_service.client_certificate]`, or of its primary keystore when
-  that is not set.
-- `tls.mtls_enabled`: CDD presents a client certificate when it calls the
-  Identity Server's APIs, where it authenticates with OAuth client credentials.
+The sync endpoints, which only the Identity Server calls, share the listener
+with the APIs applications call, and take the sync credentials with Basic auth.
+In production, keep them off the public route: a load balancer or ingress for
+applications can refuse every request with an `Authorization: Basic` header,
+since only the Identity Server sends one. Set a generated sync password on both
+sides.
 
-A client certificate needs the extended key usage `clientAuth`. Public CAs no
-longer issue it, so in production the Identity Server presents a key pair of
-its own for CDD, from a CA that issues only to it or self-signed.
+Optionally, `tls.require_client_cert` makes the sync endpoints also require a
+client certificate that `client_trust_store.pem` verifies. It is off in the
+pack. The Identity Server's CDD connector presents the key pair of
+`[customer_data_service.client_certificate]`, or of its primary keystore when
+that is not set. A client certificate needs the extended key usage
+`clientAuth`, which public CAs no longer issue, so the Identity Server needs a
+key pair of its own for CDD, from a CA that issues only to it or self-signed.
 
 A pack carries Identity Server 7.3.0's default key pair as its
 `server.crt` and `server.key`, and trusts that certificate in
