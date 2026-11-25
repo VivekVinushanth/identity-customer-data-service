@@ -100,7 +100,7 @@ cloud:
 
       tls:
         # mtls_enabled: CDD presents server_cert and server_key as a client certificate when
-        # it calls the Identity Server.
+        # it calls the Identity Server, if they allow TLS client authentication.
         mtls_enabled: false
         # require_client_cert: the sync endpoints refuse a request without a client
         # certificate that client_trust_store verifies. Off when an ingress in front of CDD
