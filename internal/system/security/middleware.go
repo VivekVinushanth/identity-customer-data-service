@@ -27,6 +27,7 @@ import (
 
 	"github.com/wso2/identity-customer-data-service/internal/system/authn"
 	"github.com/wso2/identity-customer-data-service/internal/system/authz"
+	"github.com/wso2/identity-customer-data-service/internal/system/certs"
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/errors"
@@ -40,12 +41,22 @@ import (
 func AuthnWithAdminCredentials(r *http.Request) error {
 	authHeader := r.Header.Get("Authorization")
 	logger := log.GetLogger()
-	if config.GetCDSRuntime().Config.TLS.RequireClientCert && !hasVerifiedClientCertificate(r) {
+	tlsConfig := config.GetCDSRuntime().Config.TLS
+	if tlsConfig.RequireClientCert && !hasVerifiedClientCertificate(r) {
 		logger.Debug("No verified client certificate on a request that requires one")
 		return errors.NewClientError(errors.ErrorMessage{
 			Code:        errors.Unauthorized.Code,
 			Message:     errors.Unauthorized.Message,
 			Description: "A verified client certificate is required",
+		}, http.StatusUnauthorized)
+	}
+	if tlsConfig.RequireClientCert && !hasAcceptedClientName(r, tlsConfig.ClientCertNames) {
+		logger.Warn("A verified client certificate without any of tls.client_cert_names on a request that "+
+			"requires one", log.String("subject", r.TLS.VerifiedChains[0][0].Subject.String()))
+		return errors.NewClientError(errors.ErrorMessage{
+			Code:        errors.Unauthorized.Code,
+			Message:     errors.Unauthorized.Message,
+			Description: "The client certificate is not one the sync endpoints accept",
 		}, http.StatusUnauthorized)
 	}
 	if authHeader == "" || !strings.HasPrefix(authHeader, "Basic ") {
@@ -82,6 +93,20 @@ func AuthnWithAdminCredentials(r *http.Request) error {
 // trust store names.
 func hasVerifiedClientCertificate(r *http.Request) bool {
 	return r.TLS != nil && len(r.TLS.VerifiedChains) > 0
+}
+
+// hasAcceptedClientName reports whether the verified client certificate carries one of names, or names is empty.
+func hasAcceptedClientName(r *http.Request, names []string) bool {
+	if len(names) == 0 {
+		return true
+	}
+	leaf := r.TLS.VerifiedChains[0][0]
+	for _, name := range names {
+		if certs.HasName(leaf, name) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateAdminCredentials(token string) bool {

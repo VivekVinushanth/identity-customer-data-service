@@ -43,6 +43,12 @@ import (
 // newClientCertificate returns a self-signed key pair for TLS client authentication, and its certificate in PEM.
 func newClientCertificate(t *testing.T, name string) (tls.Certificate, []byte) {
 	t.Helper()
+	return newCertificate(t, name, x509.ExtKeyUsageClientAuth)
+}
+
+// newCertificate returns a self-signed key pair with the given extended key usages, and its certificate in PEM.
+func newCertificate(t *testing.T, name string, usages ...x509.ExtKeyUsage) (tls.Certificate, []byte) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	require.NoError(t, err)
 	template := &x509.Certificate{
@@ -51,7 +57,7 @@ func newClientCertificate(t *testing.T, name string) (tls.Certificate, []byte) {
 		NotBefore:    time.Now().Add(-time.Hour),
 		NotAfter:     time.Now().Add(time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
-		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
+		ExtKeyUsage:  usages,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	require.NoError(t, err)
@@ -91,8 +97,10 @@ func TestServerTLSConfigRefusesRequireClientCertWithoutItsOwnTrustStore(t *testi
 func TestServerTLSConfigVerifiesAPresentedCertificateAndLetsOthersThrough(t *testing.T) {
 	trusted, trustedPEM := newClientCertificate(t, "identity-server")
 	untrusted, _ := newClientCertificate(t, "someone-else")
+	serverOnly, serverOnlyPEM := newCertificate(t, "bought-from-a-public-ca", x509.ExtKeyUsageServerAuth)
 	dir := t.TempDir()
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "client_trust_store.pem"), trustedPEM, 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "client_trust_store.pem"), append(trustedPEM, serverOnlyPEM...),
+		0o600))
 
 	tlsConfig, err := serverTLSConfig(config.TLSConfig{RequireClientCert: true, ClientTrustStore: "client_trust_store.pem"},
 		dir)
@@ -140,4 +148,72 @@ func TestServerTLSConfigVerifiesAPresentedCertificateAndLetsOthersThrough(t *tes
 
 	_, err = call(untrusted)
 	assert.Error(t, err, "a certificate the client trust store does not name ends the handshake")
+
+	// Why the identity server needs a client certificate of its own once its server certificate comes from a
+	// public CA: one for servers only ends the handshake even when the client trust store names it.
+	_, err = call(serverOnly)
+	assert.ErrorContains(t, err, "bad certificate")
+}
+
+// defaultCertificatePEM is the certificate the pack ships: Identity Server 7.3.0's default, public part only.
+func defaultCertificatePEM(t *testing.T) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "cli", "testdata", "is-7.3.0-default.crt"))
+	require.NoError(t, err)
+	return raw
+}
+
+// The default certificate's private key is in every Identity Server download. A pack that keeps every default
+// starts as before; one whose certificates were replaced must not still trust the default on the sync endpoints.
+func TestServerTLSConfigTrustsTheDefaultCertificateOnlyWhileEverythingIsDefault(t *testing.T) {
+	defaultPEM := defaultCertificatePEM(t)
+	_, ownPEM := newClientCertificate(t, "is.example.com")
+
+	for name, tc := range map[string]struct {
+		clientTrustStore []byte
+		serverCert       []byte
+		refused          bool
+	}{
+		"every default, as a first installation": {clientTrustStore: defaultPEM, serverCert: defaultPEM},
+		"replaced on both sides":                 {clientTrustStore: ownPEM, serverCert: ownPEM},
+		"the client trust store replaced only":   {clientTrustStore: ownPEM, serverCert: defaultPEM},
+		"the default besides a certificate of the deployment": {
+			clientTrustStore: append(append([]byte{}, ownPEM...), defaultPEM...), serverCert: defaultPEM, refused: true,
+		},
+		"the default while CDD presents its own certificate": {
+			clientTrustStore: defaultPEM, serverCert: ownPEM, refused: true,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "client_trust_store.pem"), tc.clientTrustStore, 0o600))
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "server.crt"), tc.serverCert, 0o600))
+
+			_, err := serverTLSConfig(config.TLSConfig{RequireClientCert: true, CDSPublicCert: "server.crt",
+				ClientTrustStore: "client_trust_store.pem"}, dir)
+
+			if tc.refused {
+				assert.ErrorContains(t, err, "trusts the default certificate the pack ships with")
+				return
+			}
+			assert.NoError(t, err)
+		})
+	}
+}
+
+func TestServerTLSConfigChecksClientCertNames(t *testing.T) {
+	dir := t.TempDir()
+	_, trustedPEM := newClientCertificate(t, "identity-server")
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "client_trust_store.pem"), trustedPEM, 0o600))
+
+	_, err := serverTLSConfig(config.TLSConfig{ClientCertNames: []string{"is.example.com"}}, dir)
+	assert.ErrorContains(t, err, "tls.require_client_cert is off")
+
+	_, err = serverTLSConfig(config.TLSConfig{RequireClientCert: true, ClientTrustStore: "client_trust_store.pem",
+		ClientCertNames: []string{"is.example.com", " "}}, dir)
+	assert.ErrorContains(t, err, "empty name")
+
+	_, err = serverTLSConfig(config.TLSConfig{RequireClientCert: true, ClientTrustStore: "client_trust_store.pem",
+		ClientCertNames: []string{"is.example.com"}}, dir)
+	assert.NoError(t, err)
 }

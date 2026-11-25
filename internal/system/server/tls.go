@@ -25,7 +25,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"github.com/wso2/identity-customer-data-service/internal/system/certs"
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 )
 
@@ -40,7 +42,15 @@ func serverTLSConfig(tlsCfg config.TLSConfig, certDir string) (*tls.Config, erro
 		MinVersion: tls.VersionTLS12,
 	}
 	if !tlsCfg.RequireClientCert {
+		if len(tlsCfg.ClientCertNames) > 0 {
+			return nil, errors.New("tls.client_cert_names is set but tls.require_client_cert is off")
+		}
 		return tlsConfig, nil
+	}
+	for _, name := range tlsCfg.ClientCertNames {
+		if strings.TrimSpace(name) == "" {
+			return nil, errors.New("tls.client_cert_names holds an empty name")
+		}
 	}
 
 	// Never the system CAs: any certificate a public CA issued would pass.
@@ -56,8 +66,42 @@ func serverTLSConfig(tlsCfg config.TLSConfig, certDir string) (*tls.Config, erro
 	if !clientCAs.AppendCertsFromPEM(trustPEM) {
 		return nil, fmt.Errorf("no certificates in client_trust_store: %s", trustPath)
 	}
+	if err := checkDefaultCertificateAlone(tlsCfg, certDir, trustPath, trustPEM); err != nil {
+		return nil, err
+	}
 
 	tlsConfig.ClientAuth = tls.VerifyClientCertIfGiven
 	tlsConfig.ClientCAs = clientCAs
 	return tlsConfig, nil
+}
+
+// checkDefaultCertificateAlone refuses a client trust store that still trusts the default certificate the pack
+// ships with once the deployment has certificates of its own: a client trust store that holds other certificates
+// as well, or a server certificate that is not the default. The private key of the default is in every Identity
+// Server 7.3.0 download, so anyone could present it on the sync endpoints, which an operator who replaced the
+// certificates does not expect. A pack that keeps every default, as a first installation does, starts as before.
+func checkDefaultCertificateAlone(tlsCfg config.TLSConfig, certDir, trustPath string, trustPEM []byte) error {
+	trustsDefault, trustsOthers := false, false
+	for _, cert := range certs.ParsePEM(trustPEM) {
+		if certs.IsDefault(cert) {
+			trustsDefault = true
+		} else {
+			trustsOthers = true
+		}
+	}
+	if !trustsDefault {
+		return nil
+	}
+	if trustsOthers {
+		return fmt.Errorf("client_trust_store %s trusts the default certificate the pack ships with besides "+
+			"certificates of this deployment. Its private key is in every Identity Server 7.3.0 download: remove it",
+			trustPath)
+	}
+	serverCerts, err := certs.ReadPEM(filepath.Join(certDir, tlsCfg.CDSPublicCert))
+	if err != nil || len(serverCerts) == 0 || certs.IsDefault(serverCerts[0]) {
+		return nil
+	}
+	return fmt.Errorf("client_trust_store %s trusts the default certificate the pack ships with, while CDD "+
+		"presents a certificate of its own. Its private key is in every Identity Server 7.3.0 download: replace it "+
+		"with the certificate the Identity Server presents to CDD", trustPath)
 }

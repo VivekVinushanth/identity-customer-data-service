@@ -283,3 +283,37 @@ func TestAuthnWithAdminCredentialsUnderRequireClientCert(t *testing.T) {
 		})
 	}
 }
+
+// A client trust store that holds a CA verifies every certificate that CA issued; tls.client_cert_names narrows the
+// sync endpoints to the identity server's.
+func TestAuthnWithAdminCredentialsUnderClientCertNames(t *testing.T) {
+	require.NoError(t, log.Init("ERROR"))
+	identityServer := &x509.Certificate{DNSNames: []string{"is.example.com"}}
+	otherService := &x509.Certificate{DNSNames: []string{"billing.example.com"}}
+	for name, tc := range map[string]struct {
+		names   []string
+		leaf    *x509.Certificate
+		allowed bool
+	}{
+		"no names: any verified certificate":     {leaf: otherService, allowed: true},
+		"a certificate with one of the names":    {names: []string{"cdd-sync", "is.example.com"}, leaf: identityServer, allowed: true},
+		"a certificate without any of the names": {names: []string{"is.example.com"}, leaf: otherService},
+	} {
+		t.Run(name, func(t *testing.T) {
+			config.OverrideCDSRuntime(config.Config{
+				AuthServer: config.AuthServerConfig{AdminUsername: "sync", AdminPassword: "secret"},
+				TLS:        config.TLSConfig{RequireClientCert: true, ClientCertNames: tc.names},
+			})
+
+			err := AuthnWithAdminCredentials(adminRequest("sync", "secret", [][]*x509.Certificate{{tc.leaf}}))
+
+			if tc.allowed {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			status, _ := statusOf(t, err)
+			assert.Equal(t, http.StatusUnauthorized, status)
+		})
+	}
+}

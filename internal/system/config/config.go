@@ -401,9 +401,13 @@ type TLSConfig struct {
 	// the identity server's own certificate, or a CA that issues only to it.
 	// Required with RequireClientCert, and never the system CAs.
 	ClientTrustStore string `yaml:"client_trust_store"`
+	// ClientCertNames narrows the certificates ClientTrustStore verifies to those
+	// carrying one of these names, for a client trust store that holds a CA that
+	// issues to more than the identity server. Empty accepts any of them.
+	ClientCertNames []string `yaml:"client_cert_names"`
 	// OutboundCert and OutboundKey are the key pair CDD presents to the identity
-	// server. Empty means the server key pair, which then needs the TLS client
-	// authentication usage.
+	// server. Empty means the server key pair, presented only when it allows TLS
+	// client authentication.
 	OutboundCert string `yaml:"outbound_cert"`
 	OutboundKey  string `yaml:"outbound_key"`
 }

@@ -275,8 +275,12 @@ tls:
   # The client certificates the sync endpoints accept: the Identity Server's own certificate,
   # or a CA that issues only to it. Never a public CA.
   client_trust_store: "client_trust_store.pem"
-  # The key pair CDD presents to the Identity Server. Unset means server_cert and server_key,
-  # which then need the TLS client authentication usage.
+  # With a CA in client_trust_store, the names the client certificate must carry (a DNS, URI or
+  # email subject alternative name, or the common name), so that only the Identity Server's passes.
+  # client_cert_names:
+  #   - "is.example.com"
+  # The key pair CDD presents to the Identity Server, which needs the TLS client authentication
+  # usage. Unset means server_cert and server_key, presented only when they allow that usage.
   # outbound_cert: "client.crt"
   # outbound_key: "client.key"
 

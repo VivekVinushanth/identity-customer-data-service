@@ -41,7 +41,7 @@ KEYSTORE_PASSWORD="wso2carbon"
 KEY_ALIAS="wso2carbon"
 
 # The fingerprint the runtime matches on. Changing it means changing
-# defaultCertificateFingerprints in internal/cli as well.
+# defaultFingerprints in internal/system/certs as well.
 CERT_SHA256="2B:A3:61:A0:32:FF:D4:B3:4F:7D:F0:66:DE:72:B6:1C:5E:83:6A:09:F7:A7:BD:71:05:EB:87:B4:09:4D:97:12"
 
 fail() { echo "default-cert: $*" >&2; exit 1; }

@@ -44,6 +44,7 @@ import (
 	"github.com/wso2/identity-customer-data-service/internal/profile_schema/model"
 	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 
+	"github.com/wso2/identity-customer-data-service/internal/system/certs"
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
 	errors2 "github.com/wso2/identity-customer-data-service/internal/system/errors"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
@@ -104,9 +105,17 @@ func ValidateTLSConfig(tlsCfg config.TLSConfig) error {
 	return err
 }
 
+// outboundClientKey is what an outbound HTTPS client is built from: the TLS files it reads, and the home they are
+// relative to.
 type outboundClientKey struct {
-	tls     config.TLSConfig
-	cdsHome string
+	mtlsEnabled  bool
+	certDir      string
+	serverCert   string
+	serverKey    string
+	trustStore   string
+	outboundCert string
+	outboundKey  string
+	cdsHome      string
 }
 
 var (
@@ -117,7 +126,16 @@ var (
 // sharedOutboundHTTPClient is the outbound HTTPS client of a TLS configuration, built once, so that calls reuse
 // its connections rather than reading the certificates and handshaking each time.
 func sharedOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
-	key := outboundClientKey{tls: tlsCfg, cdsHome: utils.GetCDSHome()}
+	key := outboundClientKey{
+		mtlsEnabled:  tlsCfg.MTLSEnabled,
+		certDir:      tlsCfg.CertDir,
+		serverCert:   tlsCfg.CDSPublicCert,
+		serverKey:    tlsCfg.CDSPrivateKey,
+		trustStore:   tlsCfg.TrustStore,
+		outboundCert: tlsCfg.OutboundCert,
+		outboundKey:  tlsCfg.OutboundKey,
+		cdsHome:      utils.GetCDSHome(),
+	}
 	outboundClientsMu.Lock()
 	defer outboundClientsMu.Unlock()
 	if httpClient, ok := outboundClients[key]; ok {
@@ -165,23 +183,9 @@ func newOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
 		}
 	}
 
-	// The client certificate for mTLS: the outbound key pair when one is set, the server key pair otherwise.
-	var certificates []tls.Certificate
-	if tlsCfg.MTLSEnabled {
-		certFile, keyFile := tlsCfg.CDSPublicCert, tlsCfg.CDSPrivateKey
-		if tlsCfg.OutboundCert != "" || tlsCfg.OutboundKey != "" {
-			if tlsCfg.OutboundCert == "" || tlsCfg.OutboundKey == "" {
-				return nil, errors.New("tls.outbound_cert and tls.outbound_key must be set together")
-			}
-			certFile, keyFile = tlsCfg.OutboundCert, tlsCfg.OutboundKey
-		}
-		cdsPublicCrt := filepath.Join(certDir, certFile)
-		cdsPrivatekey := filepath.Join(certDir, keyFile)
-		pair, err := tls.LoadX509KeyPair(cdsPublicCrt, cdsPrivatekey)
-		if err != nil {
-			return nil, fmt.Errorf("failed to load cert/key (%s, %s): %w", cdsPublicCrt, cdsPrivatekey, err)
-		}
-		certificates = []tls.Certificate{pair}
+	certificates, err := outboundCertificates(tlsCfg, certDir)
+	if err != nil {
+		return nil, err
 	}
 
 	tcfg := &tls.Config{
@@ -201,6 +205,43 @@ func newOutboundHTTPClient(tlsCfg config.TLSConfig) (*http.Client, error) {
 		Transport: tr,
 		Timeout:   30 * time.Second,
 	}, nil
+}
+
+// outboundCertificates is the client certificate CDD presents to the identity server with mTLS on: the outbound key
+// pair when one is set, the server key pair otherwise.
+//
+// The server key pair is presented only when it allows TLS client authentication. A certificate a public CA issued
+// is now for TLS server authentication only, and the identity server ends the handshake on one, although it asks
+// for a client certificate without requiring one. Without it the calls go out as they would with mTLS off.
+func outboundCertificates(tlsCfg config.TLSConfig, certDir string) ([]tls.Certificate, error) {
+	if !tlsCfg.MTLSEnabled {
+		return nil, nil
+	}
+	outbound := tlsCfg.OutboundCert != "" || tlsCfg.OutboundKey != ""
+	certFile, keyFile := tlsCfg.CDSPublicCert, tlsCfg.CDSPrivateKey
+	if outbound {
+		if tlsCfg.OutboundCert == "" || tlsCfg.OutboundKey == "" {
+			return nil, errors.New("tls.outbound_cert and tls.outbound_key must be set together")
+		}
+		certFile, keyFile = tlsCfg.OutboundCert, tlsCfg.OutboundKey
+	}
+	cdsPublicCrt := filepath.Join(certDir, certFile)
+	cdsPrivatekey := filepath.Join(certDir, keyFile)
+	pair, err := tls.LoadX509KeyPair(cdsPublicCrt, cdsPrivatekey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load cert/key (%s, %s): %w", cdsPublicCrt, cdsPrivatekey, err)
+	}
+	if certs.AllowsClientAuth(pair.Leaf) {
+		return []tls.Certificate{pair}, nil
+	}
+	if outbound {
+		return nil, fmt.Errorf("tls.outbound_cert %s does not allow TLS client authentication: it needs the "+
+			"extended key usage clientAuth", cdsPublicCrt)
+	}
+	log.GetLogger().Warn(fmt.Sprintf("tls.server_cert %s does not allow TLS client authentication, so CDD presents "+
+		"no client certificate when it calls the identity server. Set tls.outbound_cert and tls.outbound_key to a "+
+		"key pair with the extended key usage clientAuth to present one.", cdsPublicCrt))
+	return nil, nil
 }
 
 // FetchToken retrieves an access token for the given org.

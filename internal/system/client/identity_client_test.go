@@ -18,10 +18,16 @@
 package client
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -29,6 +35,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -487,25 +494,78 @@ func TestNewOutboundHTTPClient(t *testing.T) {
 	assert.Error(t, err, "an outbound certificate without its key")
 }
 
+// writeKeyPair writes a self-signed key pair with the given extended key usages to dir as name.crt and name.key,
+// and returns the certificate.
+func writeKeyPair(t *testing.T, dir, name string, usages ...x509.ExtKeyUsage) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: name},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		KeyUsage:     x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  usages,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	require.NoError(t, err)
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name+".crt"),
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0o600))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, name+".key"),
+		pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}), 0o600))
+	return der
+}
+
+func presentedCertificates(client *http.Client) []tls.Certificate {
+	return client.Transport.(*http.Transport).TLSClientConfig.Certificates
+}
+
 func TestNewOutboundHTTPClientPresentsTheOutboundKeyPairOverTheServerOne(t *testing.T) {
 	dir := t.TempDir()
-	server := httptest.NewTLSServer(http.NotFoundHandler())
-	t.Cleanup(server.Close)
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: server.Certificate().Raw})
-	key, err := x509.MarshalPKCS8PrivateKey(server.TLS.Certificates[0].PrivateKey)
-	require.NoError(t, err)
-	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key})
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "client.crt"), certPEM, 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "client.key"), keyPEM, 0o600))
+	client := writeKeyPair(t, dir, "client", x509.ExtKeyUsageClientAuth)
 
 	// The server pair names files that are not there, so only the outbound pair can load.
-	client, err := newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true,
+	httpClient, err := newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true,
 		CDSPublicCert: "missing.crt", CDSPrivateKey: "missing.key", OutboundCert: "client.crt", OutboundKey: "client.key"})
 	require.NoError(t, err)
 
-	certificates := client.Transport.(*http.Transport).TLSClientConfig.Certificates
+	certificates := presentedCertificates(httpClient)
 	require.Len(t, certificates, 1)
-	assert.Equal(t, server.Certificate().Raw, certificates[0].Certificate[0])
+	assert.Equal(t, client, certificates[0].Certificate[0])
+}
+
+// The server key pair is presented only when it allows TLS client authentication, as the pack's default does: a
+// certificate a public CA issued for servers only would end the handshake with the identity server.
+func TestNewOutboundHTTPClientPresentsTheServerKeyPairOnlyForClientAuthentication(t *testing.T) {
+	require.NoError(t, log.Init("ERROR"))
+	dir := t.TempDir()
+	both := writeKeyPair(t, dir, "both", x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth)
+	writeKeyPair(t, dir, "server-only", x509.ExtKeyUsageServerAuth)
+
+	httpClient, err := newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true,
+		CDSPublicCert: "both.crt", CDSPrivateKey: "both.key"})
+	require.NoError(t, err)
+	certificates := presentedCertificates(httpClient)
+	require.Len(t, certificates, 1)
+	assert.Equal(t, both, certificates[0].Certificate[0])
+
+	httpClient, err = newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true,
+		CDSPublicCert: "server-only.crt", CDSPrivateKey: "server-only.key"})
+	require.NoError(t, err, "a server certificate for servers only leaves the calls without a client certificate")
+	assert.Empty(t, presentedCertificates(httpClient))
+}
+
+func TestNewOutboundHTTPClientRefusesAnOutboundKeyPairForServersOnly(t *testing.T) {
+	dir := t.TempDir()
+	writeKeyPair(t, dir, "client", x509.ExtKeyUsageServerAuth)
+
+	_, err := newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true, OutboundCert: "client.crt",
+		OutboundKey: "client.key"})
+
+	assert.ErrorContains(t, err, "does not allow TLS client authentication")
 }
 
 func TestConvertSCIMClaimWithLocal(t *testing.T) {
