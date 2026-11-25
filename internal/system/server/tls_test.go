@@ -102,17 +102,17 @@ func TestServerTLSConfigVerifiesAPresentedCertificateAndLetsOthersThrough(t *tes
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "client_trust_store.pem"), append(trustedPEM, serverOnlyPEM...),
 		0o600))
 
-	tlsConfig, err := serverTLSConfig(config.TLSConfig{RequireClientCert: true, ClientTrustStore: "client_trust_store.pem"},
-		dir)
+	tlsConfig, err := serverTLSConfig(config.TLSConfig{RequireClientCert: true,
+		ClientTrustStore: "client_trust_store.pem"}, dir)
 	require.NoError(t, err)
 	assert.Equal(t, tls.VerifyClientCertIfGiven, tlsConfig.ClientAuth)
 
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		caller := "anonymous"
 		if len(r.TLS.VerifiedChains) > 0 {
-			_, _ = w.Write([]byte(r.TLS.VerifiedChains[0][0].Subject.CommonName))
-			return
+			caller = r.TLS.VerifiedChains[0][0].Subject.CommonName
 		}
-		_, _ = w.Write([]byte("anonymous"))
+		w.Header().Set("X-Caller", caller)
 	}))
 	server.TLS = tlsConfig
 	server.StartTLS()
@@ -133,9 +133,7 @@ func TestServerTLSConfigVerifiesAPresentedCertificateAndLetsOthersThrough(t *tes
 			return "", err
 		}
 		defer func() { _ = resp.Body.Close() }()
-		body := make([]byte, 64)
-		n, _ := resp.Body.Read(body)
-		return string(body[:n]), nil
+		return resp.Header.Get("X-Caller"), nil
 	}
 
 	caller, err := call()

@@ -149,8 +149,10 @@ The sync endpoints, which only the Identity Server calls, share the listener
 with the APIs applications call, and take the sync credentials with Basic auth.
 In production, keep them off the public route: a load balancer or ingress for
 applications can refuse every request with an `Authorization: Basic` header,
-since only the Identity Server sends one. Set a generated sync password on both
-sides.
+since only the Identity Server sends one. The Identity Server then reaches CDD
+on a private address, its `[customer_data_service] server_url`, while the
+Console uses the public one, its `[console.extensions] cds_host`. Set a
+generated sync password on both sides.
 
 Optionally, `tls.require_client_cert` makes the sync endpoints also require a
 client certificate that `client_trust_store.pem` verifies. It is off in the

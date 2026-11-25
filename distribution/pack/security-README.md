@@ -37,7 +37,10 @@ CDD is. In production:
    CDD, and the APIs applications call take tokens, so a load balancer or
    ingress in front of CDD for applications can refuse every request with an
    `Authorization: Basic` header. The Identity Server then reaches CDD on a
-   private address.
+   private address: set `server_url` in its `[customer_data_service]` block to
+   it. The Console reaches CDD on the public one, set as `cds_host` in its
+   `[console.extensions]` block. The Helm chart refuses Basic auth at its
+   ingress with `cloud.ingress.refuseBasicAuth`.
 2. Set a generated sync password, never the example one, on both sides:
    `AUTH_SERVER_ADMIN_PASSWORD` here and `admin_password` in the
    `[customer_data_service]` block of the Identity Server.

@@ -35,7 +35,7 @@ var defaultCertificate = filepath.Join("..", "..", "cli", "testdata", "is-7.3.0-
 
 func readDefault(t *testing.T) *x509.Certificate {
 	t.Helper()
-	raw, err := os.ReadFile(defaultCertificate)
+	raw, err := os.ReadFile(filepath.Clean(defaultCertificate))
 	require.NoError(t, err)
 	certificates := ParsePEM(raw)
 	require.Len(t, certificates, 1)
@@ -102,7 +102,7 @@ func TestHasName(t *testing.T) {
 }
 
 func TestParsePEMSkipsWhatIsNotACertificate(t *testing.T) {
-	raw, err := os.ReadFile(defaultCertificate)
+	raw, err := os.ReadFile(filepath.Clean(defaultCertificate))
 	require.NoError(t, err)
 	bundle := append([]byte("-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----\n"), raw...)
 

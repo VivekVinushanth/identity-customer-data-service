@@ -173,3 +173,7 @@ cloud:
         burstLimit: 50
     hostName: "cds.local.com"
     ingressClassName: "nginx"
+    # refuseBasicAuth: the ingress refuses requests with an Authorization: Basic header. Only the
+    # Identity Server sends one, to the sync endpoints, so turn it on when the Identity Server reaches
+    # CDD on the cluster service rather than through this ingress ([customer_data_service] server_url).
+    refuseBasicAuth: false

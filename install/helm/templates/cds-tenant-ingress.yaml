@@ -30,6 +30,11 @@ metadata:
     nginx.ingress.kubernetes.io/configuration-snippet: |
       limit_req zone={{ .Values.cloud.ingress.ratelimit.cds.zoneName }} burst={{ .Values.cloud.ingress.ratelimit.cds.burstLimit }} nodelay;                                                   
       limit_req_status 429;
+      {{- if .Values.cloud.ingress.refuseBasicAuth }}
+      if ($http_authorization ~* "^Basic ") {
+        return 403;
+      }
+      {{- end }}
 spec:
   ingressClassName: {{ .Values.cloud.ingress.ingressClassName }}
   rules:

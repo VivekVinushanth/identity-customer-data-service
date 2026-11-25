@@ -529,7 +529,8 @@ func TestNewOutboundHTTPClientPresentsTheOutboundKeyPairOverTheServerOne(t *test
 
 	// The server pair names files that are not there, so only the outbound pair can load.
 	httpClient, err := newOutboundHTTPClient(config.TLSConfig{CertDir: dir, MTLSEnabled: true,
-		CDSPublicCert: "missing.crt", CDSPrivateKey: "missing.key", OutboundCert: "client.crt", OutboundKey: "client.key"})
+		CDSPublicCert: "missing.crt", CDSPrivateKey: "missing.key", OutboundCert: "client.crt",
+		OutboundKey: "client.key"})
 	require.NoError(t, err)
 
 	certificates := presentedCertificates(httpClient)

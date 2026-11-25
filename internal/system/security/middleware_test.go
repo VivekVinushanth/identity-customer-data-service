@@ -228,11 +228,11 @@ func TestAuthenticate_primaryOrgPathIntrospectsAtThePrimaryOrg(t *testing.T) {
 	assert.Equal(t, []string{"/t/acme/oauth2/introspect"}, *paths)
 }
 
-// adminRequest is a sync request with the admin credentials, over a TLS connection that verified the given
-// client certificate chains.
-func adminRequest(username, password string, verifiedChains [][]*x509.Certificate) *http.Request {
+// adminRequest is a sync request with the admin user name "sync" and the given password, over a TLS connection that
+// verified the given client certificate chains.
+func adminRequest(password string, verifiedChains [][]*x509.Certificate) *http.Request {
 	r := httptest.NewRequest(http.MethodPost, "/t/acme/cds/api/v1/service-credentials/sync", nil)
-	r.SetBasicAuth(username, password)
+	r.SetBasicAuth("sync", password)
 	r.TLS = &tls.ConnectionState{VerifiedChains: verifiedChains}
 	return r
 }
@@ -246,23 +246,23 @@ func TestAuthnWithAdminCredentialsUnderRequireClientCert(t *testing.T) {
 		allowed bool
 	}{
 		"off: the credentials alone": {
-			request: adminRequest("sync", "secret", nil), allowed: true,
+			request: adminRequest("secret", nil), allowed: true,
 		},
 		"on: a verified certificate and the credentials": {
-			require: true, request: adminRequest("sync", "secret", verified), allowed: true,
+			require: true, request: adminRequest("secret", verified), allowed: true,
 		},
 		"on: the credentials without a certificate": {
-			require: true, request: adminRequest("sync", "secret", nil),
+			require: true, request: adminRequest("secret", nil),
 		},
 		"on: the credentials over plain HTTP": {
 			require: true, request: func() *http.Request {
-				r := adminRequest("sync", "secret", nil)
+				r := adminRequest("secret", nil)
 				r.TLS = nil
 				return r
 			}(),
 		},
 		"on: a verified certificate with wrong credentials": {
-			require: true, request: adminRequest("sync", "wrong", verified),
+			require: true, request: adminRequest("wrong", verified),
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -295,8 +295,10 @@ func TestAuthnWithAdminCredentialsUnderClientCertNames(t *testing.T) {
 		leaf    *x509.Certificate
 		allowed bool
 	}{
-		"no names: any verified certificate":     {leaf: otherService, allowed: true},
-		"a certificate with one of the names":    {names: []string{"cdd-sync", "is.example.com"}, leaf: identityServer, allowed: true},
+		"no names: any verified certificate": {leaf: otherService, allowed: true},
+		"a certificate with one of the names": {
+			names: []string{"cdd-sync", "is.example.com"}, leaf: identityServer, allowed: true,
+		},
 		"a certificate without any of the names": {names: []string{"is.example.com"}, leaf: otherService},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -305,7 +307,7 @@ func TestAuthnWithAdminCredentialsUnderClientCertNames(t *testing.T) {
 				TLS:        config.TLSConfig{RequireClientCert: true, ClientCertNames: tc.names},
 			})
 
-			err := AuthnWithAdminCredentials(adminRequest("sync", "secret", [][]*x509.Certificate{{tc.leaf}}))
+			err := AuthnWithAdminCredentials(adminRequest("secret", [][]*x509.Certificate{{tc.leaf}}))
 
 			if tc.allowed {
 				assert.NoError(t, err)

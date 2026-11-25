@@ -72,15 +72,16 @@ func TestTrustsDefaultCertificate(t *testing.T) {
 	dir := t.TempDir()
 	other := filepath.Join(dir, "other.crt")
 	writeTestCertificate(t, other, "is.example.com")
-	otherPEM, err := os.ReadFile(other)
+	otherPEM, err := os.ReadFile(filepath.Clean(other))
 	if err != nil {
 		t.Fatalf("could not read the certificate: %v", err)
 	}
-	defaultPEM, err := os.ReadFile(defaultCertificate)
+	defaultPEM, err := os.ReadFile(filepath.Clean(defaultCertificate))
 	if err != nil {
 		t.Fatalf("could not read the default certificate: %v", err)
 	}
-	bundle := filepath.Join(dir, "bundle.pem")
+	bundle := filepath.Clean(filepath.Join(dir, "bundle.pem"))
+	//nolint:gosec // the bundle is written to the test's own temporary directory
 	if err := os.WriteFile(bundle, append(otherPEM, defaultPEM...), 0o600); err != nil {
 		t.Fatalf("could not stage the bundle: %v", err)
 	}
