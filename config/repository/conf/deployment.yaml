@@ -257,31 +257,16 @@ datasource:
   #   max_open_conns: 4
 
 tls:
-  # CDD serves HTTPS with server_cert and server_key, and verifies the Identity Server's
-  # certificate against trust_store, added to the system CAs.
-  # mtls_enabled: CDD presents a client certificate when it calls the Identity Server:
-  # server_cert and server_key, or outbound_cert and outbound_key when set.
-  mtls_enabled: true
-  # require_client_cert: the sync endpoints the Identity Server calls refuse a request
-  # without a client certificate that client_trust_store verifies. The endpoints browsers
-  # and SDKs call ask for none. The Identity Server's CDD connector must present a client
-  # certificate. Turn it off only where something in front of CDD ends the TLS, since the
-  # client certificate does not reach CDD there.
-  require_client_cert: true
+  # What each file holds, and the certificates to use in production: the security README.
+  mtls_enabled: true          # present a client certificate when calling the Identity Server
+  require_client_cert: true   # the sync endpoints require a client certificate from client_trust_store
   cert_dir: "/etc/certs"
-  server_cert: "server.crt" #filename
-  server_key: "server.key" #filename
-  trust_store: "trust_store.pem"      # certificates CDD trusts when it calls the Identity Server
-  # The client certificates the sync endpoints accept: the Identity Server's own certificate,
-  # or a CA that issues only to it. Never a public CA.
-  client_trust_store: "client_trust_store.pem"
-  # With a CA in client_trust_store, the names the client certificate must carry (a DNS, URI or
-  # email subject alternative name, or the common name), so that only the Identity Server's passes.
-  # client_cert_names:
-  #   - "is.example.com"
-  # The key pair CDD presents to the Identity Server, which needs the TLS client authentication
-  # usage. Unset means server_cert and server_key, presented only when they allow that usage.
-  # outbound_cert: "client.crt"
+  server_cert: "server.crt"
+  server_key: "server.key"
+  trust_store: "trust_store.pem"                # Identity Server certificates CDD trusts as a client
+  client_trust_store: "client_trust_store.pem"  # client certificates the sync endpoints accept
+  # client_cert_names: ["is.example.com"]       # names the client certificate must carry
+  # outbound_cert: "client.crt"                 # the key pair CDD presents; default server_cert
   # outbound_key: "client.key"
 
 identity_resolution:
