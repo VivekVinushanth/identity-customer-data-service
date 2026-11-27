@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/wso2/identity-customer-data-service/internal/system/config"
+	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
 )
 
@@ -44,6 +45,15 @@ type fakeStore struct {
 	closed  int
 	// lastCtxErr is the error of the context of the last call, to tell whether it was cancelled.
 	lastCtxErr error
+	// lastDeadline is the deadline of the context of the last call, and hasDeadline whether it had one.
+	lastDeadline time.Time
+	hasDeadline  bool
+}
+
+// record notes the context of a call. The caller holds the lock.
+func (f *fakeStore) record(ctx context.Context) {
+	f.lastCtxErr = ctx.Err()
+	f.lastDeadline, f.hasDeadline = ctx.Deadline()
 }
 
 func newFakeStore() *fakeStore {
@@ -53,7 +63,7 @@ func newFakeStore() *fakeStore {
 func (f *fakeStore) Get(ctx context.Context, namespace, key string) ([]byte, bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastCtxErr = ctx.Err()
+	f.record(ctx)
 	if f.err != nil {
 		return nil, false, f.err
 	}
@@ -64,7 +74,7 @@ func (f *fakeStore) Get(ctx context.Context, namespace, key string) ([]byte, boo
 func (f *fakeStore) Set(ctx context.Context, namespace, key string, value []byte, ttl time.Duration) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastCtxErr = ctx.Err()
+	f.record(ctx)
 	if f.err != nil {
 		return f.err
 	}
@@ -76,7 +86,7 @@ func (f *fakeStore) Set(ctx context.Context, namespace, key string, value []byte
 func (f *fakeStore) Delete(ctx context.Context, namespace, key string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastCtxErr = ctx.Err()
+	f.record(ctx)
 	if f.err != nil {
 		return f.err
 	}
@@ -87,7 +97,7 @@ func (f *fakeStore) Delete(ctx context.Context, namespace, key string) error {
 func (f *fakeStore) Clear(ctx context.Context, namespace string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastCtxErr = ctx.Err()
+	f.record(ctx)
 	if f.err != nil {
 		return f.err
 	}
@@ -262,6 +272,30 @@ func TestInvalidationOutlivesACancelledRequest(t *testing.T) {
 	c.Clear(ctx)
 	if store.lastCtxErr != nil {
 		t.Errorf("Clear passed on a cancelled context: %v", store.lastCtxErr)
+	}
+}
+
+// TestInvalidationIsBounded guards against an invalidation that waits on a store that does not
+// answer for as long as it likes: dropping the cancellation of the request must not drop a bound.
+func TestInvalidationIsBounded(t *testing.T) {
+	store := useFakeStore(t)
+	c := New[string]("test.bounded", time.Hour)
+
+	for name, invalidate := range map[string]func(){
+		"Delete": func() { c.Delete(context.Background(), "k") },
+		"Clear":  func() { c.Clear(context.Background()) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			before := time.Now()
+			invalidate()
+			if !store.hasDeadline {
+				t.Fatal("the store got a context with no deadline")
+			}
+			limit := before.Add(constants.CacheInvalidationTimeout)
+			if store.lastDeadline.After(limit.Add(time.Second)) {
+				t.Errorf("deadline %s is later than the invalidation timeout allows (%s)", store.lastDeadline, limit)
+			}
+		})
 	}
 }
 

@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/wso2/identity-customer-data-service/internal/system/constants"
 	"github.com/wso2/identity-customer-data-service/internal/system/log"
 )
 
@@ -126,7 +127,9 @@ func (c *Cache[V]) Delete(ctx context.Context, key string) {
 		c.memory.delete(key)
 		return
 	}
-	if err := s.Delete(context.WithoutCancel(ctx), c.name, key); err != nil {
+	ctx, cancel := invalidationContext(ctx)
+	defer cancel()
+	if err := s.Delete(ctx, c.name, key); err != nil {
 		c.invalidationFailed(err)
 	}
 }
@@ -140,9 +143,17 @@ func (c *Cache[V]) Clear(ctx context.Context) {
 		c.memory.clear()
 		return
 	}
-	if err := s.Clear(context.WithoutCancel(ctx), c.name); err != nil {
+	ctx, cancel := invalidationContext(ctx)
+	defer cancel()
+	if err := s.Clear(ctx, c.name); err != nil {
 		c.invalidationFailed(err)
 	}
+}
+
+// invalidationContext keeps the values of ctx but not its cancellation, and bounds the call
+// instead, so that a store that does not answer cannot hold the write that triggered it.
+func invalidationContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), constants.CacheInvalidationTimeout)
 }
 
 func (c *Cache[V]) warn(action string, err error) {

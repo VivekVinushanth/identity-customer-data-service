@@ -93,6 +93,19 @@ cache:
 
 An unknown `type` stops the server at startup.
 
+## Securing the store
+
+CDD trusts what it reads from the store. The store holds the org ID of each org handle, which
+decides the organization a request reads and writes, and the CORS origins of each organization.
+Anyone who can write to the store can therefore send the requests of one organization to the data
+of another.
+
+- Make the store reachable only by CDD, on a private network.
+- Require authentication, and use TLS between CDD and the store.
+- Give each deployment its own store, or its own key prefix, so that two deployments never share
+  entries.
+- Take the password from an environment variable (`${CACHE_PASSWORD}` above) rather than writing it in `deployment.yaml`.
+
 ## Adding a cache
 
 Create a cache with a type, a name of its own and a TTL:
